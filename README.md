@@ -4,6 +4,11 @@ A comprehensive developer debugging toolkit for Go applications.
 
 **Zero external dependencies. 26 packages. 180 tests. Real-time web dashboard.**
 
+### Web Dashboard
+
+![godevtool dashboard](docs/dashboard.png)
+
+
 ## Features
 
 | Category | Features |
@@ -162,9 +167,6 @@ dt.PrintTimerReport()
 // process-order        5   250ms         50ms         30ms         80ms
 ```
 
-### Web Dashboard
-
-![godevtool dashboard](docs/dashboard.png)
 
 ```go
 // Start monitors
