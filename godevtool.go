@@ -347,26 +347,22 @@ func (d *DevTool) StartDashboard(addr string) error {
 		}
 	})
 
-	// Wire real-time request push
-	origInspector := d.inspector
-	_ = origInspector // already has onLog wired; add dashboard broadcast
-	// We re-set the middleware callback to also broadcast to dashboard
-	d.inspector = middleware.New(
-		middleware.WithOnLog(func(rl middleware.RequestLog) {
-			d.Log.Debug("http request",
-				"method", rl.Method,
-				"path", rl.Path,
-				"status", rl.StatusCode,
-				"duration", rl.Duration,
-			)
-			if d.dashboard != nil {
-				d.dashboard.Hub().Broadcast(dashboard.Event{
-					Type: "request",
-					Data: rl,
-				})
-			}
-		}),
-	)
+	// Wire real-time request push — update callback on the existing inspector
+	// so the handler reference stays valid
+	d.inspector.SetOnLog(func(rl middleware.RequestLog) {
+		d.Log.Debug("http request",
+			"method", rl.Method,
+			"path", rl.Path,
+			"status", rl.StatusCode,
+			"duration", rl.Duration,
+		)
+		if d.dashboard != nil {
+			d.dashboard.Hub().Broadcast(dashboard.Event{
+				Type: "request",
+				Data: rl,
+			})
+		}
+	})
 
 	if err := d.dashboard.Start(); err != nil {
 		return err

@@ -147,6 +147,13 @@ func (ins *Inspector) Count() int {
 	return ins.store.Len()
 }
 
+// SetOnLog replaces the callback invoked for each captured request.
+func (ins *Inspector) SetOnLog(fn func(RequestLog)) {
+	ins.mu.Lock()
+	defer ins.mu.Unlock()
+	ins.onLog = fn
+}
+
 func formatID(n uint64) string {
 	const chars = "0123456789abcdef"
 	buf := make([]byte, 8)

@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
+	stdlog "log"
 	"net/http"
 
 	"github.com/tarunnahak/godevtool/config"
@@ -37,6 +39,7 @@ func (s *Server) registerAPIRoutes() {
 	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/overview", s.handleOverview)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
+	s.mux.HandleFunc("/events", s.handleSSE)
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
@@ -164,41 +167,90 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, bufrw, err := upgradeWebSocket(w, r)
+	ws, err := upgradeWebSocket(w, r)
 	if err != nil {
+		stdlog.Printf("[godevtool] WebSocket upgrade failed: %v", err)
 		return
 	}
+	stdlog.Printf("[godevtool] WebSocket client connected from %s", r.RemoteAddr)
 
 	c := &client{send: make(chan []byte, 256)}
 	s.hub.register(c)
 
-	// writer goroutine
+	// writer goroutine — sends messages from hub to client
 	go func() {
-		defer conn.Close()
+		defer ws.Close()
 		for msg := range c.send {
-			if err := writeTextFrame(bufrw, msg); err != nil {
+			if err := ws.writeTextFrame(msg); err != nil {
 				return
 			}
 		}
 	}()
 
-	// reader goroutine (handles ping/close)
+	// reader goroutine — reads from client (handles ping/pong/close)
+	// When the reader exits, unregister closes c.send which stops the writer.
 	go func() {
-		defer s.hub.unregister(c)
+		defer func() {
+			stdlog.Printf("[godevtool] WebSocket reader exiting for %s", r.RemoteAddr)
+			s.hub.unregister(c)
+			ws.Close()
+		}()
 		for {
-			opcode, data, err := readFrame(bufrw)
+			opcode, data, err := ws.readFrame()
 			if err != nil {
+				stdlog.Printf("[godevtool] WebSocket read error from %s: %v", r.RemoteAddr, err)
 				return
 			}
 			switch opcode {
 			case 0x8: // close
-				writeCloseFrame(bufrw)
+				ws.writeCloseFrame()
 				return
 			case 0x9: // ping
-				writePongFrame(bufrw, data)
+				ws.writePongFrame(data)
 			}
 		}
 	}()
+}
+
+// handleSSE implements Server-Sent Events — a simple, reliable alternative to
+// WebSocket for server→client push. Works over plain HTTP, no Hijack needed.
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Register this client with the hub
+	c := &client{send: make(chan []byte, 256)}
+	s.hub.register(c)
+	defer s.hub.unregister(c)
+
+	stdlog.Printf("[godevtool] SSE client connected from %s", r.RemoteAddr)
+
+	// Send initial keepalive
+	fmt.Fprintf(w, ": connected\n\n")
+	flusher.Flush()
+
+	for {
+		select {
+		case msg, ok := <-c.send:
+			if !ok {
+				return
+			}
+			// SSE format: "data: <json>\n\n"
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			flusher.Flush()
+		case <-r.Context().Done():
+			stdlog.Printf("[godevtool] SSE client disconnected from %s", r.RemoteAddr)
+			return
+		}
+	}
 }
 
 func jsonResponse(w http.ResponseWriter, data any) {

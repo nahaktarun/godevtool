@@ -30,31 +30,85 @@ document.getElementById('nav').addEventListener('click', (e) => {
   }
 });
 
-// --- WebSocket ---
-function connectWS() {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + window.location.host + '/ws');
+// --- Real-time connection (SSE with WebSocket fallback) ---
+let evtSource = null;
 
-  ws.onopen = () => {
+function connectRealtime() {
+  // Use Server-Sent Events (SSE) — works reliably over plain HTTP
+  connectSSE();
+}
+
+function connectSSE() {
+  const sseUrl = window.location.origin + '/events';
+  console.log('[godevtool] connecting SSE to', sseUrl);
+
+  evtSource = new EventSource(sseUrl);
+
+  evtSource.onopen = () => {
+    console.log('[godevtool] SSE connected');
     document.getElementById('ws-status').classList.add('connected');
     document.getElementById('ws-label').textContent = 'Connected';
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   };
 
-  ws.onclose = () => {
-    document.getElementById('ws-status').classList.remove('connected');
-    document.getElementById('ws-label').textContent = 'Disconnected';
-    reconnectTimer = setTimeout(connectWS, 2000);
+  evtSource.onerror = (e) => {
+    console.log('[godevtool] SSE error, readyState:', evtSource.readyState);
+    if (evtSource.readyState === EventSource.CLOSED) {
+      document.getElementById('ws-status').classList.remove('connected');
+      document.getElementById('ws-label').textContent = 'Disconnected';
+      reconnectTimer = setTimeout(connectRealtime, 2000);
+    }
   };
 
-  ws.onerror = () => ws.close();
+  evtSource.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      handleEvent(evt);
+    } catch (err) {
+      console.error('[godevtool] SSE parse error:', err);
+    }
+  };
+}
+
+function connectWS() {
+  const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host + '/ws';
+  console.log('[godevtool] connecting WebSocket to', wsUrl);
+
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    console.error('[godevtool] WebSocket failed, falling back to SSE');
+    connectSSE();
+    return;
+  }
+
+  ws.onopen = () => {
+    console.log('[godevtool] WebSocket connected');
+    document.getElementById('ws-status').classList.add('connected');
+    document.getElementById('ws-label').textContent = 'Connected';
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+
+  ws.onclose = (e) => {
+    console.log('[godevtool] WebSocket closed:', e.code, e.reason);
+    document.getElementById('ws-status').classList.remove('connected');
+    document.getElementById('ws-label').textContent = 'Disconnected';
+    // Fall back to SSE if WebSocket fails
+    console.log('[godevtool] Falling back to SSE');
+    connectSSE();
+  };
+
+  ws.onerror = (e) => {
+    console.error('[godevtool] WebSocket error');
+    ws.close();
+  };
 
   ws.onmessage = (e) => {
     try {
       const evt = JSON.parse(e.data);
       handleEvent(evt);
     } catch (err) {
-      console.error('ws parse error:', err);
+      console.error('[godevtool] WS parse error:', err);
     }
   };
 }
@@ -510,5 +564,5 @@ function startAutoRefresh() {
 
 // --- Init ---
 refreshOverview();
-connectWS();
+connectRealtime();
 startAutoRefresh();

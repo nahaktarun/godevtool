@@ -7,7 +7,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
+	"sync"
 )
 
 // Minimal WebSocket implementation (RFC 6455) — no external dependencies.
@@ -16,8 +19,8 @@ import (
 const websocketGUID = "258EAFA5-E914-47DA-95CA-5AB5DC525C63"
 
 func isWebSocketUpgrade(r *http.Request) bool {
-	return r.Header.Get("Upgrade") == "websocket" &&
-		r.Header.Get("Connection") != "" &&
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") &&
 		r.Header.Get("Sec-WebSocket-Key") != ""
 }
 
@@ -27,65 +30,92 @@ func acceptKey(key string) string {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
-func upgradeWebSocket(w http.ResponseWriter, r *http.Request) (io.ReadWriteCloser, *bufio.ReadWriter, error) {
+// wsConn wraps a hijacked connection with separate buffered reader/writer
+// and a mutex protecting all writes.
+type wsConn struct {
+	conn   net.Conn
+	reader *bufio.Reader
+	writer *bufio.Writer
+	wmu    sync.Mutex // protects all writes
+}
+
+func upgradeWebSocket(w http.ResponseWriter, r *http.Request) (*wsConn, error) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "WebSocket upgrade not supported", http.StatusInternalServerError)
-		return nil, nil, fmt.Errorf("hijack not supported")
+		return nil, fmt.Errorf("hijack not supported")
 	}
 
 	conn, bufrw, err := hj.Hijack()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+
+	// Flush any pre-buffered data from the HTTP server before writing our handshake
+	if bufrw.Writer.Buffered() > 0 {
+		bufrw.Writer.Flush()
 	}
 
 	key := r.Header.Get("Sec-WebSocket-Key")
 	accept := acceptKey(key)
 
-	bufrw.WriteString("HTTP/1.1 101 Switching Protocols\r\n")
-	bufrw.WriteString("Upgrade: websocket\r\n")
-	bufrw.WriteString("Connection: Upgrade\r\n")
-	bufrw.WriteString("Sec-WebSocket-Accept: " + accept + "\r\n")
-	bufrw.WriteString("\r\n")
-	bufrw.Flush()
+	// Write the 101 handshake response directly to the raw connection
+	// to avoid any buffering issues
+	handshake := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Accept: " + accept + "\r\n" +
+		"\r\n"
 
-	return conn, bufrw, nil
+	if _, err := conn.Write([]byte(handshake)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("handshake write failed: %w", err)
+	}
+
+	return &wsConn{
+		conn:   conn,
+		reader: bufrw.Reader,
+		writer: bufio.NewWriter(conn), // fresh writer on raw conn
+	}, nil
 }
 
-// writeTextFrame writes a WebSocket text frame.
-func writeTextFrame(bufrw *bufio.ReadWriter, data []byte) error {
+// writeTextFrame writes a WebSocket text frame. Thread-safe.
+func (ws *wsConn) writeTextFrame(data []byte) error {
+	ws.wmu.Lock()
+	defer ws.wmu.Unlock()
+
 	// opcode 0x1 = text frame, FIN bit set
-	bufrw.WriteByte(0x81)
+	ws.writer.WriteByte(0x81)
 
 	length := len(data)
 	switch {
 	case length <= 125:
-		bufrw.WriteByte(byte(length))
+		ws.writer.WriteByte(byte(length))
 	case length <= 65535:
-		bufrw.WriteByte(126)
+		ws.writer.WriteByte(126)
 		var b [2]byte
 		binary.BigEndian.PutUint16(b[:], uint16(length))
-		bufrw.Write(b[:])
+		ws.writer.Write(b[:])
 	default:
-		bufrw.WriteByte(127)
+		ws.writer.WriteByte(127)
 		var b [8]byte
 		binary.BigEndian.PutUint64(b[:], uint64(length))
-		bufrw.Write(b[:])
+		ws.writer.Write(b[:])
 	}
 
-	bufrw.Write(data)
-	return bufrw.Flush()
+	ws.writer.Write(data)
+	return ws.writer.Flush()
 }
 
 // readFrame reads a WebSocket frame. Returns opcode and payload.
 // Handles masked client frames per RFC 6455.
-func readFrame(bufrw *bufio.ReadWriter) (opcode byte, payload []byte, err error) {
+func (ws *wsConn) readFrame() (opcode byte, payload []byte, err error) {
 	// read first 2 bytes
-	b0, err := bufrw.ReadByte()
+	b0, err := ws.reader.ReadByte()
 	if err != nil {
 		return 0, nil, err
 	}
-	b1, err := bufrw.ReadByte()
+	b1, err := ws.reader.ReadByte()
 	if err != nil {
 		return 0, nil, err
 	}
@@ -97,13 +127,13 @@ func readFrame(bufrw *bufio.ReadWriter) (opcode byte, payload []byte, err error)
 	switch length {
 	case 126:
 		var b [2]byte
-		if _, err := io.ReadFull(bufrw, b[:]); err != nil {
+		if _, err := io.ReadFull(ws.reader, b[:]); err != nil {
 			return 0, nil, err
 		}
 		length = uint64(binary.BigEndian.Uint16(b[:]))
 	case 127:
 		var b [8]byte
-		if _, err := io.ReadFull(bufrw, b[:]); err != nil {
+		if _, err := io.ReadFull(ws.reader, b[:]); err != nil {
 			return 0, nil, err
 		}
 		length = binary.BigEndian.Uint64(b[:])
@@ -111,13 +141,13 @@ func readFrame(bufrw *bufio.ReadWriter) (opcode byte, payload []byte, err error)
 
 	var mask [4]byte
 	if masked {
-		if _, err := io.ReadFull(bufrw, mask[:]); err != nil {
+		if _, err := io.ReadFull(ws.reader, mask[:]); err != nil {
 			return 0, nil, err
 		}
 	}
 
 	payload = make([]byte, length)
-	if _, err := io.ReadFull(bufrw, payload); err != nil {
+	if _, err := io.ReadFull(ws.reader, payload); err != nil {
 		return 0, nil, err
 	}
 
@@ -130,17 +160,26 @@ func readFrame(bufrw *bufio.ReadWriter) (opcode byte, payload []byte, err error)
 	return opcode, payload, nil
 }
 
-// writeCloseFrame sends a WebSocket close frame.
-func writeCloseFrame(bufrw *bufio.ReadWriter) {
-	bufrw.WriteByte(0x88) // FIN + close opcode
-	bufrw.WriteByte(0)    // no payload
-	bufrw.Flush()
+// writeCloseFrame sends a WebSocket close frame. Thread-safe.
+func (ws *wsConn) writeCloseFrame() {
+	ws.wmu.Lock()
+	defer ws.wmu.Unlock()
+	ws.writer.WriteByte(0x88) // FIN + close opcode
+	ws.writer.WriteByte(0)    // no payload
+	ws.writer.Flush()
 }
 
-// writePongFrame sends a WebSocket pong frame with the given payload.
-func writePongFrame(bufrw *bufio.ReadWriter, data []byte) {
-	bufrw.WriteByte(0x8A) // FIN + pong opcode
-	bufrw.WriteByte(byte(len(data)))
-	bufrw.Write(data)
-	bufrw.Flush()
+// writePongFrame sends a WebSocket pong frame. Thread-safe.
+func (ws *wsConn) writePongFrame(data []byte) {
+	ws.wmu.Lock()
+	defer ws.wmu.Unlock()
+	ws.writer.WriteByte(0x8A) // FIN + pong opcode
+	ws.writer.WriteByte(byte(len(data)))
+	ws.writer.Write(data)
+	ws.writer.Flush()
+}
+
+// Close closes the underlying connection.
+func (ws *wsConn) Close() error {
+	return ws.conn.Close()
 }
