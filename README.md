@@ -432,7 +432,7 @@ go run examples/full-dashboard/main.go
 
 ## API Reference
 
-Full API documentation: [pkg.go.dev/github.com/tarunnahak/godevtool](https://pkg.go.dev/github.com/nahaktarun/godevtool)
+Full API documentation: [pkg.go.dev/github.com/nahaktarun/godevtool](https://pkg.go.dev/github.com/nahaktarun/godevtool)
 
 ## Contributing
 
