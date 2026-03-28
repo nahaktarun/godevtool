@@ -164,6 +164,8 @@ dt.PrintTimerReport()
 
 ### Web Dashboard
 
+![godevtool dashboard](docs/dashboard.png)
+
 ```go
 // Start monitors
 dt.StartGoroutineMonitor(3 * time.Second)
