@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>godevtool Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>godevtool <span>dashboard</span></h1>
+    <div class="status">
+      <div class="status-dot" id="ws-status"></div>
+      <span id="ws-label">Disconnected</span>
+    </div>
+  </div>
+
+  <div class="nav" id="nav">
+    <button class="active" data-tab="overview">Overview</button>
+    <button data-tab="logs">Logs <span class="nav-badge" id="log-count">0</span></button>
+    <button data-tab="requests">Requests <span class="nav-badge" id="req-count">0</span></button>
+    <button data-tab="goroutines">Goroutines <span class="nav-badge" id="gr-count">0</span></button>
+    <button data-tab="memory">Memory</button>
+    <button data-tab="timers">Timers</button>
+  </div>
+
+  <!-- Overview Panel -->
+  <div class="panel active" id="panel-overview">
+    <div class="overview" id="overview-cards"></div>
+  </div>
+
+  <!-- Logs Panel -->
+  <div class="panel" id="panel-logs">
+    <div class="panel-header">
+      <div class="panel-title">Application Logs</div>
+      <button class="btn" onclick="refreshLogs()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Level</th><th>Message</th><th>Fields</th></tr>
+          </thead>
+          <tbody id="log-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests Panel -->
+  <div class="panel" id="panel-requests">
+    <div class="panel-header">
+      <div class="panel-title">HTTP Requests</div>
+      <button class="btn" onclick="refreshRequests()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>Duration</th></tr>
+          </thead>
+          <tbody id="req-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goroutines Panel -->
+  <div class="panel" id="panel-goroutines">
+    <div class="panel-header">
+      <div class="panel-title">Goroutines</div>
+      <button class="btn" onclick="refreshGoroutines()">Refresh</button>
+    </div>
+    <div class="scroll-content" id="goroutine-list"></div>
+  </div>
+
+  <!-- Memory Panel -->
+  <div class="panel" id="panel-memory">
+    <div class="panel-header">
+      <div class="panel-title">Memory & GC</div>
+      <button class="btn" onclick="refreshMemStats()">Refresh</button>
+    </div>
+    <div class="mem-grid" id="mem-grid"></div>
+  </div>
+
+  <!-- Timers Panel -->
+  <div class="panel" id="panel-timers">
+    <div class="panel-header">
+      <div class="panel-title">Timer Report</div>
+      <button class="btn" onclick="refreshTimers()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Label</th><th>Count</th><th>Total</th><th>Avg</th><th>Min</th><th>Max</th><th>Last</th></tr>
+          </thead>
+          <tbody id="timer-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

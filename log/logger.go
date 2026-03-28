@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+// LogEntry is an exported representation of a log entry for the dashboard.
+type LogEntry struct {
+	Time    time.Time         `json:"time"`
+	Level   string            `json:"level"`
+	Message string            `json:"message"`
+	Fields  map[string]string `json:"fields,omitempty"`
+	Prefix  string            `json:"prefix,omitempty"`
+}
+
 // Logger provides structured, colorized logging.
 // It is safe for concurrent use.
 type Logger struct {
@@ -18,6 +27,9 @@ type Logger struct {
 	fields     []field
 	mu         sync.Mutex
 	enabled    bool
+	onEntry    func(LogEntry)
+	history    []LogEntry
+	maxHistory int
 }
 
 // New creates a Logger.
@@ -34,6 +46,7 @@ func New(out io.Writer, level Level, colorize bool, timeFormat string) *Logger {
 		colorize:   colorize,
 		timeFormat: timeFormat,
 		enabled:    true,
+		maxHistory: 500,
 	}
 }
 
@@ -47,6 +60,8 @@ func (l *Logger) With(keyvals ...any) *Logger {
 		timeFormat: l.timeFormat,
 		prefix:     l.prefix,
 		enabled:    l.enabled,
+		onEntry:    l.onEntry,
+		maxHistory: l.maxHistory,
 		fields:     make([]field, len(l.fields), len(l.fields)+len(keyvals)/2),
 	}
 	copy(child.fields, l.fields)
@@ -126,6 +141,48 @@ func (l *Logger) log(level Level, msg string, args []any) {
 		Prefix:  prefix,
 	}
 	formatEntry(out, e, colorize, timeFmt)
+
+	// build exported LogEntry for history + callback
+	le := LogEntry{
+		Time:    e.Time,
+		Level:   level.String(),
+		Message: msg,
+		Prefix:  prefix,
+	}
+	if len(fields) > 0 {
+		le.Fields = make(map[string]string, len(fields))
+		for _, f := range fields {
+			le.Fields[f.Key] = formatValue(f.Value)
+		}
+	}
+
+	l.mu.Lock()
+	l.history = append(l.history, le)
+	if len(l.history) > l.maxHistory {
+		l.history = l.history[len(l.history)-l.maxHistory:]
+	}
+	onEntry := l.onEntry
+	l.mu.Unlock()
+
+	if onEntry != nil {
+		onEntry(le)
+	}
+}
+
+// SetOnEntry sets a callback invoked for each log entry (used by dashboard).
+func (l *Logger) SetOnEntry(fn func(LogEntry)) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.onEntry = fn
+}
+
+// History returns recent log entries.
+func (l *Logger) History() []LogEntry {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	result := make([]LogEntry, len(l.history))
+	copy(result, l.history)
+	return result
 }
 
 func parseFields(args []any) []field {

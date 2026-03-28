@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tarunnahak/godevtool/dashboard"
 	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
@@ -37,6 +38,9 @@ type DevTool struct {
 	inspector  *middleware.Inspector
 	goroutines *goroutine.Monitor
 	memstats   *memstats.Collector
+
+	// Phase 3
+	dashboard *dashboard.Server
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -273,10 +277,81 @@ func (d *DevTool) PrintMemStats() {
 	memstats.PrintSnapshot(d.output, snap, d.isColorized())
 }
 
-// Shutdown stops all background monitors gracefully.
+// --- Phase 3: Web Dashboard ---
+
+// StartDashboard starts the web dashboard on the given address (e.g. ":9999").
+// It wires all subsystems into the dashboard for real-time visualization.
+func (d *DevTool) StartDashboard(addr string) error {
+	if !d.enabled {
+		return nil
+	}
+
+	providers := dashboard.DataProviders{
+		Logger:     d.Log,
+		Middleware: d.inspector,
+		Goroutine: func() goroutine.Snapshot {
+			return d.GoroutineSnapshot()
+		},
+		MemStats: func() memstats.Snapshot {
+			return d.MemSnapshot()
+		},
+		Timer: d.report,
+	}
+
+	d.dashboard = dashboard.NewServer(addr, providers)
+
+	// Wire real-time log push to dashboard WebSocket
+	d.Log.SetOnEntry(func(entry log.LogEntry) {
+		if d.dashboard != nil {
+			d.dashboard.Hub().Broadcast(dashboard.Event{
+				Type: "log",
+				Data: entry,
+			})
+		}
+	})
+
+	// Wire real-time request push
+	origInspector := d.inspector
+	_ = origInspector // already has onLog wired; add dashboard broadcast
+	// We re-set the middleware callback to also broadcast to dashboard
+	d.inspector = middleware.New(
+		middleware.WithOnLog(func(rl middleware.RequestLog) {
+			d.Log.Debug("http request",
+				"method", rl.Method,
+				"path", rl.Path,
+				"status", rl.StatusCode,
+				"duration", rl.Duration,
+			)
+			if d.dashboard != nil {
+				d.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "request",
+					Data: rl,
+				})
+			}
+		}),
+	)
+
+	if err := d.dashboard.Start(); err != nil {
+		return err
+	}
+
+	d.Log.Info("dashboard started", "addr", addr, "url", "http://localhost"+addr)
+	return nil
+}
+
+// StopDashboard stops the web dashboard server.
+func (d *DevTool) StopDashboard() error {
+	if d.dashboard != nil {
+		return d.dashboard.Stop()
+	}
+	return nil
+}
+
+// Shutdown stops all background monitors and the dashboard gracefully.
 func (d *DevTool) Shutdown() {
 	d.StopGoroutineMonitor()
 	d.StopMemStats()
+	d.StopDashboard()
 }
 
 func (d *DevTool) isColorized() bool {

@@ -1,0 +1,300 @@
+:root {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+  --cyan: #39d2c0;
+  --purple: #bc8cff;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.header h1 span { color: var(--text-muted); font-weight: 400; }
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.status-dot.connected { background: var(--green); }
+
+/* Navigation */
+.nav {
+  display: flex;
+  gap: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+}
+
+.nav button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-sans);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.nav button:hover { color: var(--text); }
+.nav button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Overview cards */
+.overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.card-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.card-value {
+  font-size: 28px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.card-value.accent { color: var(--accent); }
+.card-value.green { color: var(--green); }
+.card-value.yellow { color: var(--yellow); }
+.card-value.cyan { color: var(--cyan); }
+.card-value.purple { color: var(--purple); }
+
+/* Panels */
+.panel {
+  display: none;
+  padding: 16px 24px;
+}
+
+.panel.active { display: block; }
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover { background: var(--border); }
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+thead { background: var(--bg-tertiary); }
+
+th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tr:hover { background: rgba(88, 166, 255, 0.04); }
+
+/* Log levels */
+.level-DEBUG { color: var(--cyan); }
+.level-INFO { color: var(--green); }
+.level-WARN { color: var(--yellow); }
+.level-ERROR { color: var(--red); }
+
+/* HTTP status */
+.status-2xx { color: var(--green); }
+.status-3xx { color: var(--cyan); }
+.status-4xx { color: var(--yellow); }
+.status-5xx { color: var(--red); }
+
+/* Method badges */
+.method {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.method-GET { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+.method-POST { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+.method-PUT { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+.method-DELETE { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+.method-PATCH { background: rgba(188, 140, 255, 0.15); color: var(--purple); }
+
+/* Duration badge */
+.duration {
+  font-family: var(--font-mono);
+}
+
+.duration.fast { color: var(--green); }
+.duration.medium { color: var(--yellow); }
+.duration.slow { color: var(--red); }
+
+/* Goroutine list */
+.goroutine-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.goroutine-item .id { color: var(--text-muted); }
+.goroutine-item .func { color: var(--green); }
+.goroutine-item .state { color: var(--yellow); }
+
+/* Memory stats grid */
+.mem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.mem-stat {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.mem-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.mem-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+/* Fields in log entries */
+.log-fields {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.log-fields .key { color: var(--accent); }
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Scrollable panel content */
+.scroll-content {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+/* Counters in nav */
+.nav-badge {
+  display: inline-block;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
