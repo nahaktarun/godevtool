@@ -24,6 +24,9 @@ document.getElementById('nav').addEventListener('click', (e) => {
     case 'goroutines': refreshGoroutines(); break;
     case 'memory': refreshMemStats(); break;
     case 'timers': refreshTimers(); break;
+    case 'queries': refreshQueries(); break;
+    case 'timeline': refreshTimeline(); break;
+    case 'config': refreshConfig(); break;
   }
 });
 
@@ -72,6 +75,14 @@ function handleEvent(evt) {
     case 'memstats':
       renderMemStats(evt.data);
       break;
+    case 'timeline':
+      prependTimelineEvent(evt.data);
+      updateBadge('tl-count', 1);
+      break;
+    case 'query':
+      prependQueryRow(evt.data);
+      updateBadge('query-count', 1);
+      break;
   }
 }
 
@@ -109,6 +120,18 @@ async function refreshOverview() {
     <div class="card">
       <div class="card-label">Active Timers</div>
       <div class="card-value purple">${data.timer_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">DB Queries</div>
+      <div class="card-value accent">${data.query_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Timeline Events</div>
+      <div class="card-value green">${data.timeline_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Config Sections</div>
+      <div class="card-value purple">${data.config_count || 0}</div>
     </div>
     <div class="card">
       <div class="card-label">WS Clients</div>
@@ -297,6 +320,134 @@ function prependRequestRow(req) {
   while (tbody.children.length > 500) {
     tbody.removeChild(tbody.lastChild);
   }
+}
+
+// --- Queries ---
+async function refreshQueries() {
+  const queries = await fetchJSON('/api/queries');
+  const tbody = document.getElementById('query-table');
+  tbody.innerHTML = '';
+  document.getElementById('query-count').textContent = queries ? queries.length : 0;
+
+  if (!queries || queries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No database queries recorded yet.</td></tr>';
+    return;
+  }
+
+  for (let i = queries.length - 1; i >= 0; i--) {
+    appendQueryRow(tbody, queries[i]);
+  }
+}
+
+function appendQueryRow(tbody, q) {
+  const tr = document.createElement('tr');
+  const time = formatTime(q.timestamp);
+  const dur = formatDuration(q.duration);
+  const durClass = q.duration < 50000000 ? 'fast' : q.duration < 200000000 ? 'medium' : 'slow';
+  const opClass = 'method method-' + (q.operation === 'SELECT' ? 'GET' : q.operation === 'INSERT' ? 'POST' : q.operation === 'UPDATE' ? 'PUT' : q.operation === 'DELETE' ? 'DELETE' : 'GET');
+
+  tr.innerHTML = `
+    <td>${time}</td>
+    <td><span class="${opClass}">${escapeHtml(q.operation)}</span></td>
+    <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(q.query)}">${escapeHtml(q.query)}</td>
+    <td><span class="duration ${durClass}">${dur}</span></td>
+    <td>${q.rows >= 0 ? q.rows : '—'}</td>
+    <td>${q.error ? '<span class="level-ERROR">' + escapeHtml(q.error) + '</span>' : '—'}</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function prependQueryRow(q) {
+  const tbody = document.getElementById('query-table');
+  const tr = document.createElement('tr');
+  const time = formatTime(q.timestamp);
+  const dur = formatDuration(q.duration);
+  const durClass = q.duration < 50000000 ? 'fast' : q.duration < 200000000 ? 'medium' : 'slow';
+
+  tr.innerHTML = `
+    <td>${time}</td>
+    <td><span class="method method-GET">${escapeHtml(q.operation)}</span></td>
+    <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(q.query)}</td>
+    <td><span class="duration ${durClass}">${dur}</span></td>
+    <td>${q.rows >= 0 ? q.rows : '—'}</td>
+    <td>${q.error ? '<span class="level-ERROR">' + escapeHtml(q.error) + '</span>' : '—'}</td>
+  `;
+  tbody.insertBefore(tr, tbody.firstChild);
+  while (tbody.children.length > 500) tbody.removeChild(tbody.lastChild);
+}
+
+// --- Timeline ---
+async function refreshTimeline() {
+  const events = await fetchJSON('/api/timeline');
+  const el = document.getElementById('timeline-list');
+  document.getElementById('tl-count').textContent = events ? events.length : 0;
+
+  if (!events || events.length === 0) {
+    el.innerHTML = '<div class="empty">No timeline events recorded yet.</div>';
+    return;
+  }
+
+  let html = '';
+  for (let i = events.length - 1; i >= 0; i--) {
+    html += renderTimelineEvent(events[i]);
+  }
+  el.innerHTML = html;
+}
+
+function renderTimelineEvent(evt) {
+  const time = formatTime(evt.timestamp);
+  const dur = evt.is_span && evt.duration ? formatDuration(evt.duration) : '';
+  const catColor = {http:'green',db:'cyan',custom:'accent',gc:'yellow',goroutine:'yellow',timer:'purple',log:''}[evt.category] || 'accent';
+  const dataStr = evt.data ? Object.entries(evt.data).map(([k,v]) => `<span class="key">${escapeHtml(k)}</span>=${escapeHtml(String(v))}`).join(' ') : '';
+
+  return `<div class="goroutine-item">
+    <span style="color:var(--text-muted)">${time}</span>
+    <span class="method method-GET" style="margin:0 6px">${escapeHtml(evt.category)}</span>
+    <span class="func">${escapeHtml(evt.label)}</span>
+    ${dur ? `<span class="duration fast" style="margin-left:8px">${dur}</span>` : ''}
+    ${dataStr ? `<span class="log-fields" style="margin-left:8px">${dataStr}</span>` : ''}
+  </div>`;
+}
+
+function prependTimelineEvent(evt) {
+  const el = document.getElementById('timeline-list');
+  const div = document.createElement('div');
+  div.innerHTML = renderTimelineEvent(evt);
+  el.insertBefore(div.firstElementChild, el.firstChild);
+  while (el.children.length > 500) el.removeChild(el.lastChild);
+}
+
+// --- Config ---
+async function refreshConfig() {
+  const configs = await fetchJSON('/api/config');
+  const el = document.getElementById('config-list');
+
+  if (!configs || configs.length === 0) {
+    el.innerHTML = '<div class="empty">No configuration registered. Use dt.RegisterConfig() to add configs.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const section of configs) {
+    html += `<div class="card" style="margin-bottom:12px;padding:16px">
+      <div class="panel-title" style="margin-bottom:8px;color:var(--accent)">${escapeHtml(section.name)}</div>
+      <div class="table-wrap"><table><thead>
+        <tr><th>Key</th><th>Value</th><th>Type</th><th>Source</th></tr>
+      </thead><tbody>`;
+
+    for (const entry of (section.entries || [])) {
+      const val = entry.redacted ? '<span class="level-ERROR">********</span>' : escapeHtml(entry.value);
+      html += `<tr>
+        <td>${escapeHtml(entry.key)}</td>
+        <td>${val}</td>
+        <td style="color:var(--text-muted)">${escapeHtml(entry.type)}</td>
+        <td style="color:var(--text-muted)">${escapeHtml(entry.source || '')}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div></div>';
+  }
+  el.innerHTML = html;
 }
 
 // --- Helpers ---

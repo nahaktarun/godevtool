@@ -22,6 +22,9 @@
     <button data-tab="goroutines">Goroutines <span class="nav-badge" id="gr-count">0</span></button>
     <button data-tab="memory">Memory</button>
     <button data-tab="timers">Timers</button>
+    <button data-tab="queries">Queries <span class="nav-badge" id="query-count">0</span></button>
+    <button data-tab="timeline">Timeline <span class="nav-badge" id="tl-count">0</span></button>
+    <button data-tab="config">Config</button>
   </div>
 
   <!-- Overview Panel -->
@@ -99,6 +102,42 @@
         </table>
       </div>
     </div>
+  </div>
+
+  <!-- Queries Panel -->
+  <div class="panel" id="panel-queries">
+    <div class="panel-header">
+      <div class="panel-title">Database Queries</div>
+      <button class="btn" onclick="refreshQueries()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Op</th><th>Query</th><th>Duration</th><th>Rows</th><th>Error</th></tr>
+          </thead>
+          <tbody id="query-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline Panel -->
+  <div class="panel" id="panel-timeline">
+    <div class="panel-header">
+      <div class="panel-title">Event Timeline</div>
+      <button class="btn" onclick="refreshTimeline()">Refresh</button>
+    </div>
+    <div class="scroll-content" id="timeline-list"></div>
+  </div>
+
+  <!-- Config Panel -->
+  <div class="panel" id="panel-config">
+    <div class="panel-header">
+      <div class="panel-title">Configuration</div>
+      <button class="btn" onclick="refreshConfig()">Refresh</button>
+    </div>
+    <div class="scroll-content" id="config-list"></div>
   </div>
 
   <script src="app.js"></script>

@@ -6,7 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/tarunnahak/godevtool/config"
 	"github.com/tarunnahak/godevtool/dashboard"
+	"github.com/tarunnahak/godevtool/dblog"
 	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
@@ -14,6 +16,7 @@ import (
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
 	"github.com/tarunnahak/godevtool/stack"
+	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
 )
 
@@ -41,6 +44,11 @@ type DevTool struct {
 
 	// Phase 3
 	dashboard *dashboard.Server
+
+	// Phase 4
+	dbLogger   *dblog.Logger
+	timeline   *timeline.Timeline
+	configView *config.Viewer
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -87,6 +95,32 @@ func New(opts ...Option) *DevTool {
 			)
 		}),
 	)
+
+	// Phase 4: Initialize DB logger, timeline, config viewer
+	dt.timeline = timeline.New(
+		timeline.WithOnEvent(func(evt timeline.Event) {
+			if dt.dashboard != nil {
+				dt.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "timeline",
+					Data: evt,
+				})
+			}
+		}),
+	)
+	dt.dbLogger = dblog.New(
+		dblog.WithOnLog(func(ql dblog.QueryLog) {
+			dt.Log.Debug("db query",
+				"op", ql.Operation,
+				"query", ql.Query,
+				"duration", ql.Duration,
+			)
+			dt.timeline.Record(timeline.CatDB, ql.Query, map[string]any{
+				"duration": ql.Duration.String(),
+				"rows":     ql.Rows,
+			})
+		}),
+	)
+	dt.configView = config.New()
 
 	return dt
 }
@@ -295,7 +329,10 @@ func (d *DevTool) StartDashboard(addr string) error {
 		MemStats: func() memstats.Snapshot {
 			return d.MemSnapshot()
 		},
-		Timer: d.report,
+		Timer:    d.report,
+		DBLogger: d.dbLogger,
+		Timeline: d.timeline,
+		Config:   d.configView,
 	}
 
 	d.dashboard = dashboard.NewServer(addr, providers)
@@ -352,6 +389,62 @@ func (d *DevTool) Shutdown() {
 	d.StopGoroutineMonitor()
 	d.StopMemStats()
 	d.StopDashboard()
+}
+
+// --- Phase 4: DB Logger, Timeline, Config Viewer ---
+
+// DBLogger returns the database query logger.
+// Use dblog.WrapDB(db, dt.DBLogger()) to wrap a *sql.DB.
+func (d *DevTool) DBLogger() *dblog.Logger {
+	return d.dbLogger
+}
+
+// Timeline returns the event timeline.
+func (d *DevTool) Timeline() *timeline.Timeline {
+	return d.timeline
+}
+
+// TimelineRecord adds a point-in-time event to the timeline.
+func (d *DevTool) TimelineRecord(category, label string, data map[string]any) string {
+	if !d.enabled {
+		return ""
+	}
+	return d.timeline.Record(category, label, data)
+}
+
+// TimelineStart begins a span on the timeline. Call span.End() to complete it.
+func (d *DevTool) TimelineStart(category, label string, data map[string]any) *timeline.Span {
+	return d.timeline.Start(category, label, data)
+}
+
+// PrintTimeline prints recent timeline events to the configured output.
+func (d *DevTool) PrintTimeline(n int) {
+	if !d.enabled {
+		return
+	}
+	events := d.timeline.LastEvents(n)
+	fmt.Fprint(d.output, timeline.FormatEvents(events, d.isColorized()))
+}
+
+// Config returns the configuration viewer.
+func (d *DevTool) Config() *config.Viewer {
+	return d.configView
+}
+
+// RegisterConfig adds a named configuration struct for display on the dashboard.
+// Fields tagged `devtool:"redact"` will have their values masked.
+func (d *DevTool) RegisterConfig(name string, cfg any, sources ...map[string]string) {
+	d.configView.Register(name, cfg, sources...)
+}
+
+// PrintConfig prints all registered configurations to the configured output.
+func (d *DevTool) PrintConfig() {
+	if !d.enabled {
+		return
+	}
+	for _, snap := range d.configView.Snapshot() {
+		fmt.Fprint(d.output, config.FormatSnapshot(snap, d.isColorized()))
+	}
 }
 
 func (d *DevTool) isColorized() bool {

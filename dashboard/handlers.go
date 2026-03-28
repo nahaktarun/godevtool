@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/tarunnahak/godevtool/config"
+	"github.com/tarunnahak/godevtool/dblog"
 	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
+	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
 )
 
@@ -18,6 +21,9 @@ type DataProviders struct {
 	Goroutine  func() goroutine.Snapshot
 	MemStats   func() memstats.Snapshot
 	Timer      *timer.Report
+	DBLogger   *dblog.Logger
+	Timeline   *timeline.Timeline
+	Config     *config.Viewer
 }
 
 func (s *Server) registerAPIRoutes() {
@@ -26,6 +32,9 @@ func (s *Server) registerAPIRoutes() {
 	s.mux.HandleFunc("/api/goroutines", s.handleGoroutines)
 	s.mux.HandleFunc("/api/memstats", s.handleMemStats)
 	s.mux.HandleFunc("/api/timers", s.handleTimers)
+	s.mux.HandleFunc("/api/queries", s.handleQueries)
+	s.mux.HandleFunc("/api/timeline", s.handleTimeline)
+	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/overview", s.handleOverview)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 }
@@ -75,13 +84,43 @@ func (s *Server) handleTimers(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, s.providers.Timer.All())
 }
 
+func (s *Server) handleQueries(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.DBLogger == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.DBLogger.LastQueries(100))
+}
+
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Timeline == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.Timeline.LastEvents(200))
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Config == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.Config.Snapshot())
+}
+
 type overviewData struct {
-	LogCount       int `json:"log_count"`
-	RequestCount   int `json:"request_count"`
-	GoroutineCount int `json:"goroutine_count"`
+	LogCount       int    `json:"log_count"`
+	RequestCount   int    `json:"request_count"`
+	GoroutineCount int    `json:"goroutine_count"`
 	HeapAlloc      string `json:"heap_alloc"`
-	TimerCount     int `json:"timer_count"`
-	WSClients      int `json:"ws_clients"`
+	TimerCount     int    `json:"timer_count"`
+	QueryCount     int    `json:"query_count"`
+	TimelineCount  int    `json:"timeline_count"`
+	ConfigCount    int    `json:"config_count"`
+	WSClients      int    `json:"ws_clients"`
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +143,15 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.providers.Timer != nil {
 		data.TimerCount = len(s.providers.Timer.All())
+	}
+	if s.providers.DBLogger != nil {
+		data.QueryCount = s.providers.DBLogger.Count()
+	}
+	if s.providers.Timeline != nil {
+		data.TimelineCount = s.providers.Timeline.Count()
+	}
+	if s.providers.Config != nil {
+		data.ConfigCount = len(s.providers.Config.Names())
 	}
 	data.WSClients = s.hub.clientCount()
 
