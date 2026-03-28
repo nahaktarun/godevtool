@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 // Frame represents a single stack frame.

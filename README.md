@@ -33,7 +33,7 @@ A comprehensive developer debugging toolkit for Go applications.
 ## Installation
 
 ```bash
-go get github.com/tarunnahak/godevtool
+go get github.com/nahaktarun/godevtool
 ```
 
 Requires Go 1.21 or later.
@@ -44,8 +44,8 @@ Requires Go 1.21 or later.
 package main
 
 import (
-    "github.com/tarunnahak/godevtool"
-    "github.com/tarunnahak/godevtool/log"
+    "github.com/nahaktarun/godevtool"
+    "github.com/nahaktarun/godevtool/log"
 )
 
 func main() {
@@ -179,7 +179,7 @@ The dashboard provides 19 real-time tabs: Overview, Logs, Requests, Goroutines, 
 ### Database Query Logging
 
 ```go
-import "github.com/tarunnahak/godevtool/dblog"
+import "github.com/nahaktarun/godevtool/dblog"
 
 // Wrap your *sql.DB
 wrappedDB := dblog.WrapDB(db, dt.DBLogger())
@@ -191,7 +191,7 @@ rows, err := wrappedDB.QueryContext(ctx, "SELECT * FROM users WHERE id = $1", 42
 ### Event Timeline
 
 ```go
-import "github.com/tarunnahak/godevtool/timeline"
+import "github.com/nahaktarun/godevtool/timeline"
 
 // Point-in-time events
 dt.TimelineRecord(timeline.CatHTTP, "GET /api/users", map[string]any{"status": 200})
@@ -328,7 +328,7 @@ dt.ExportToFile("debug-report.html", "html")
 ### Hot Reload
 
 ```go
-import "github.com/tarunnahak/godevtool/hotreload"
+import "github.com/nahaktarun/godevtool/hotreload"
 
 dt.StartHotReload(
     hotreload.WithDirs("."),

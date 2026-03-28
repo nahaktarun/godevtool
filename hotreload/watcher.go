@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 // Status represents the watcher state.

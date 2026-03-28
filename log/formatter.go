@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 type entry struct {

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/ringbuf"
+	"github.com/nahaktarun/godevtool/internal/ringbuf"
 )
 
 // RequestTrace captures timing details of an outgoing HTTP request.

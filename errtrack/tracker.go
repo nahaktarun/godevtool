@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/color"
-	"github.com/tarunnahak/godevtool/internal/ringbuf"
+	"github.com/nahaktarun/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/ringbuf"
 )
 
 // TrackedError represents a single error occurrence.

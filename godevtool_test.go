@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tarunnahak/godevtool/log"
+	"github.com/nahaktarun/godevtool/log"
 )
 
 func TestNew(t *testing.T) {

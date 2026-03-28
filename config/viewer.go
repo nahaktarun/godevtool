@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 // Entry represents a single configuration field.

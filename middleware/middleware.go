@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/ringbuf"
+	"github.com/nahaktarun/godevtool/internal/ringbuf"
 )
 
 // RequestLog captures a single request/response cycle.

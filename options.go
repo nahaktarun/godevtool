@@ -3,7 +3,7 @@ package godevtool
 import (
 	"io"
 
-	"github.com/tarunnahak/godevtool/log"
+	"github.com/nahaktarun/godevtool/log"
 )
 
 // Option configures a DevTool instance.

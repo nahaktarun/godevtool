@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 // Module represents a single dependency.

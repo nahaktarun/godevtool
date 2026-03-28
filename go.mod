@@ -1,3 +1,3 @@
-module github.com/tarunnahak/godevtool
+module github.com/nahaktarun/godevtool
 
 go 1.25.1

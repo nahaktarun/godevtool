@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/ringbuf"
+	"github.com/nahaktarun/godevtool/internal/ringbuf"
 )
 
 // QueryLog records a single database query.

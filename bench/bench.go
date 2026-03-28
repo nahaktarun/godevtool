@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tarunnahak/godevtool/internal/color"
-	"github.com/tarunnahak/godevtool/internal/ringbuf"
+	"github.com/nahaktarun/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/ringbuf"
 )
 
 // Result holds benchmark statistics.

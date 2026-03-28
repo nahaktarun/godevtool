@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tarunnahak/godevtool/log"
-	"github.com/tarunnahak/godevtool/middleware"
-	"github.com/tarunnahak/godevtool/timer"
+	"github.com/nahaktarun/godevtool/log"
+	"github.com/nahaktarun/godevtool/middleware"
+	"github.com/nahaktarun/godevtool/timer"
 )
 
 func newTestServer() *Server {

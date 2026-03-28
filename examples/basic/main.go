@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tarunnahak/godevtool"
-	"github.com/tarunnahak/godevtool/log"
+	"github.com/nahaktarun/godevtool"
+	"github.com/nahaktarun/godevtool/log"
 )
 
 type Address struct {

@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/tarunnahak/godevtool/internal/color"
+	"github.com/nahaktarun/godevtool/internal/color"
 )
 
 // Config controls inspection behavior.
