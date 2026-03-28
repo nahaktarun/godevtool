@@ -29,6 +29,10 @@
     <button data-tab="environ">Environment</button>
     <button data-tab="deps">Dependencies</button>
     <button data-tab="profiler">Profiler</button>
+    <button data-tab="outgoing">Outgoing HTTP <span class="nav-badge" id="out-count">0</span></button>
+    <button data-tab="caches">Caches</button>
+    <button data-tab="ratelimits">Rate Limits</button>
+    <button data-tab="benchmarks">Benchmarks</button>
   </div>
 
   <!-- Overview Panel -->
@@ -211,6 +215,56 @@
         <table>
           <thead><tr><th>Time</th><th>Type</th><th>Size</th><th>Duration</th><th>Download</th></tr></thead>
           <tbody id="profiles-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Outgoing HTTP Panel -->
+  <div class="panel" id="panel-outgoing">
+    <div class="panel-header">
+      <div class="panel-title">Outgoing HTTP Requests</div>
+      <button class="btn" onclick="refreshOutgoing()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Method</th><th>URL</th><th>Status</th><th>Duration</th><th>DNS</th><th>TCP</th><th>TLS</th><th>Server</th></tr></thead>
+          <tbody id="outgoing-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Caches Panel -->
+  <div class="panel" id="panel-caches">
+    <div class="panel-header">
+      <div class="panel-title">Cache Statistics</div>
+      <button class="btn" onclick="refreshCaches()">Refresh</button>
+    </div>
+    <div class="mem-grid" id="cache-grid"></div>
+  </div>
+
+  <!-- Rate Limits Panel -->
+  <div class="panel" id="panel-ratelimits">
+    <div class="panel-header">
+      <div class="panel-title">Rate Limiter Statistics</div>
+      <button class="btn" onclick="refreshRateLimits()">Refresh</button>
+    </div>
+    <div class="mem-grid" id="ratelimit-grid"></div>
+  </div>
+
+  <!-- Benchmarks Panel -->
+  <div class="panel" id="panel-benchmarks">
+    <div class="panel-header">
+      <div class="panel-title">Benchmark Results</div>
+      <button class="btn" onclick="refreshBenchmarks()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Label</th><th>N</th><th>Avg</th><th>P50</th><th>P90</th><th>P99</th><th>Ops/sec</th></tr></thead>
+          <tbody id="bench-table"></tbody>
         </table>
       </div>
     </div>

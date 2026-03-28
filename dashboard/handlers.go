@@ -7,16 +7,20 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tarunnahak/godevtool/bench"
+	"github.com/tarunnahak/godevtool/cachemon"
 	"github.com/tarunnahak/godevtool/config"
 	"github.com/tarunnahak/godevtool/dblog"
 	"github.com/tarunnahak/godevtool/deps"
 	"github.com/tarunnahak/godevtool/environ"
 	"github.com/tarunnahak/godevtool/errtrack"
 	"github.com/tarunnahak/godevtool/goroutine"
+	"github.com/tarunnahak/godevtool/httptrace"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
 	"github.com/tarunnahak/godevtool/profiler"
+	"github.com/tarunnahak/godevtool/ratelimit"
 	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
 )
@@ -36,6 +40,11 @@ type DataProviders struct {
 	Deps       func() deps.ScanResult
 	ErrTracker *errtrack.Tracker
 	Profiler   *profiler.Profiler
+	// Phase 6
+	HTTPTracer *httptrace.Tracer
+	CacheMon   *cachemon.Monitor
+	RateMon    *ratelimit.Monitor
+	Bench      *bench.Runner
 }
 
 func (s *Server) registerAPIRoutes() {
@@ -53,6 +62,10 @@ func (s *Server) registerAPIRoutes() {
 	s.mux.HandleFunc("/api/profiles", s.handleProfiles)
 	s.mux.HandleFunc("/api/profiles/capture", s.handleProfileCapture)
 	s.mux.HandleFunc("/api/profiles/download", s.handleProfileDownload)
+	s.mux.HandleFunc("/api/outgoing", s.handleOutgoing)
+	s.mux.HandleFunc("/api/caches", s.handleCaches)
+	s.mux.HandleFunc("/api/ratelimits", s.handleRateLimits)
+	s.mux.HandleFunc("/api/benchmarks", s.handleBenchmarks)
 	s.mux.HandleFunc("/api/overview", s.handleOverview)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/events", s.handleSSE)
@@ -244,6 +257,44 @@ func (s *Server) handleProfileDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.pprof", id))
 	w.Write(data)
+}
+
+// Phase 6 handlers
+
+func (s *Server) handleOutgoing(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.HTTPTracer == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.HTTPTracer.LastTraces(100))
+}
+
+func (s *Server) handleCaches(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.CacheMon == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.CacheMon.Stats())
+}
+
+func (s *Server) handleRateLimits(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.RateMon == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.RateMon.Stats())
+}
+
+func (s *Server) handleBenchmarks(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Bench == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.Bench.Results())
 }
 
 type overviewData struct {

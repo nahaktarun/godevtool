@@ -31,6 +31,10 @@ document.getElementById('nav').addEventListener('click', (e) => {
     case 'environ': refreshEnviron(); break;
     case 'deps': refreshDeps(); break;
     case 'profiler': refreshProfiles(); break;
+    case 'outgoing': refreshOutgoing(); break;
+    case 'caches': refreshCaches(); break;
+    case 'ratelimits': refreshRateLimits(); break;
+    case 'benchmarks': refreshBenchmarks(); break;
   }
 });
 
@@ -140,6 +144,9 @@ function handleEvent(evt) {
     case 'query':
       prependQueryRow(evt.data);
       updateBadge('query-count', 1);
+      break;
+    case 'outgoing':
+      updateBadge('out-count', 1);
       break;
   }
 }
@@ -526,6 +533,118 @@ async function refreshConfig() {
     html += '</tbody></table></div></div>';
   }
   el.innerHTML = html;
+}
+
+// --- Outgoing HTTP ---
+async function refreshOutgoing() {
+  const traces = await fetchJSON('/api/outgoing');
+  const tbody = document.getElementById('outgoing-table');
+  tbody.innerHTML = '';
+  document.getElementById('out-count').textContent = traces ? traces.length : 0;
+
+  if (!traces || traces.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No outgoing HTTP requests traced. Use dt.WrapHTTPClient() to instrument.</td></tr>';
+    return;
+  }
+
+  for (let i = traces.length - 1; i >= 0; i--) {
+    const t = traces[i];
+    const durClass = t.duration < 100000000 ? 'fast' : t.duration < 500000000 ? 'medium' : 'slow';
+    const statusClass = t.status_code < 300 ? 'status-2xx' : t.status_code < 400 ? 'status-3xx' : t.status_code < 500 ? 'status-4xx' : 'status-5xx';
+    const url = t.url.length > 60 ? t.url.substring(0, 57) + '...' : t.url;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatTime(t.timestamp)}</td>
+      <td><span class="method method-${t.method}">${t.method}</span></td>
+      <td title="${escapeHtml(t.url)}">${escapeHtml(url)}</td>
+      <td><span class="${statusClass}">${t.status_code || (t.error ? 'ERR' : '—')}</span></td>
+      <td><span class="duration ${durClass}">${formatDuration(t.duration)}</span></td>
+      <td>${formatDuration(t.dns_lookup)}</td>
+      <td>${formatDuration(t.tcp_connect)}</td>
+      <td>${formatDuration(t.tls_handshake)}</td>
+      <td>${formatDuration(t.server_processing)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// --- Caches ---
+async function refreshCaches() {
+  const stats = await fetchJSON('/api/caches');
+  const grid = document.getElementById('cache-grid');
+
+  if (!stats || stats.length === 0) {
+    grid.innerHTML = '<div class="empty">No caches registered. Use dt.RegisterCache() to track.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const s of stats) {
+    const hitPct = (s.hit_rate * 100).toFixed(1);
+    const hitColor = s.hit_rate > 0.8 ? 'var(--green)' : s.hit_rate > 0.5 ? 'var(--yellow)' : 'var(--red)';
+    html += `<div class="card" style="margin-bottom:8px">
+      <div class="panel-title" style="color:var(--accent);margin-bottom:8px">${escapeHtml(s.name)}</div>
+      <div style="font-size:28px;font-weight:600;font-family:var(--font-mono);color:${hitColor}">${hitPct}%</div>
+      <div class="card-label">Hit Rate</div>
+      <div style="margin-top:8px;font-size:13px;color:var(--text-muted)">
+        Hits: ${s.hits} | Misses: ${s.misses} | Sets: ${s.sets} | Evictions: ${s.evictions} | Size: ${s.size}
+      </div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+// --- Rate Limits ---
+async function refreshRateLimits() {
+  const stats = await fetchJSON('/api/ratelimits');
+  const grid = document.getElementById('ratelimit-grid');
+
+  if (!stats || stats.length === 0) {
+    grid.innerHTML = '<div class="empty">No rate limiters registered. Use dt.RegisterRateLimiter() to track.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const s of stats) {
+    const throttlePct = (s.throttle_rate * 100).toFixed(1);
+    const throttleColor = s.throttle_rate < 0.05 ? 'var(--green)' : s.throttle_rate < 0.2 ? 'var(--yellow)' : 'var(--red)';
+    html += `<div class="card" style="margin-bottom:8px">
+      <div class="panel-title" style="color:var(--accent);margin-bottom:8px">${escapeHtml(s.name)}</div>
+      <div style="font-size:28px;font-weight:600;font-family:var(--font-mono);color:${throttleColor}">${throttlePct}%</div>
+      <div class="card-label">Throttle Rate</div>
+      <div style="margin-top:8px;font-size:13px;color:var(--text-muted)">
+        Allowed: ${s.allowed} | Throttled: ${s.throttled} | Queued: ${s.queued} | Queue Depth: ${s.queue_depth} | Avg Wait: ${formatDuration(s.avg_wait_time)}
+      </div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+// --- Benchmarks ---
+async function refreshBenchmarks() {
+  const results = await fetchJSON('/api/benchmarks');
+  const tbody = document.getElementById('bench-table');
+  tbody.innerHTML = '';
+
+  if (!results || results.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No benchmarks run. Use dt.Benchmark() to run.</td></tr>';
+    return;
+  }
+
+  for (let i = results.length - 1; i >= 0; i--) {
+    const r = results[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(r.label)}</td>
+      <td>${r.iterations}</td>
+      <td>${formatDuration(r.avg_time)}</td>
+      <td>${formatDuration(r.p50)}</td>
+      <td>${formatDuration(r.p90)}</td>
+      <td>${formatDuration(r.p99)}</td>
+      <td>${r.ops_per_sec ? r.ops_per_sec.toFixed(0) : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
 }
 
 // --- Errors ---

@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/tarunnahak/godevtool/bench"
+	"github.com/tarunnahak/godevtool/cachemon"
 	"github.com/tarunnahak/godevtool/config"
 	"github.com/tarunnahak/godevtool/dashboard"
 	"github.com/tarunnahak/godevtool/dblog"
@@ -14,12 +16,14 @@ import (
 	"github.com/tarunnahak/godevtool/environ"
 	"github.com/tarunnahak/godevtool/errtrack"
 	"github.com/tarunnahak/godevtool/goroutine"
+	"github.com/tarunnahak/godevtool/httptrace"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
 	"github.com/tarunnahak/godevtool/profiler"
+	"github.com/tarunnahak/godevtool/ratelimit"
 	"github.com/tarunnahak/godevtool/stack"
 	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
@@ -60,6 +64,12 @@ type DevTool struct {
 	depsResult *deps.ScanResult
 	errTracker *errtrack.Tracker
 	prof       *profiler.Profiler
+
+	// Phase 6
+	httpTracer  *httptrace.Tracer
+	cacheMon    *cachemon.Monitor
+	rateMon     *ratelimit.Monitor
+	benchRunner *bench.Runner
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -149,6 +159,36 @@ func New(opts ...Option) *DevTool {
 		}),
 	)
 	dt.prof = profiler.New()
+
+	// Phase 6: HTTP tracer, cache monitor, rate limiter monitor, benchmark
+	dt.httpTracer = httptrace.New(
+		httptrace.WithOnTrace(func(rt httptrace.RequestTrace) {
+			dt.Log.Debug("outgoing http",
+				"method", rt.Method,
+				"url", rt.URL,
+				"status", rt.StatusCode,
+				"duration", rt.Duration,
+			)
+			if dt.dashboard != nil {
+				dt.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "outgoing",
+					Data: rt,
+				})
+			}
+		}),
+	)
+	dt.cacheMon = cachemon.New()
+	dt.rateMon = ratelimit.New()
+	dt.benchRunner = bench.New(
+		bench.WithOnResult(func(r bench.Result) {
+			dt.Log.Debug("benchmark complete",
+				"label", r.Label,
+				"iterations", r.Iterations,
+				"avg", r.AvgTime,
+				"p99", r.P99,
+			)
+		}),
+	)
 
 	return dt
 }
@@ -371,6 +411,11 @@ func (d *DevTool) StartDashboard(addr string) error {
 		},
 		ErrTracker: d.errTracker,
 		Profiler:   d.prof,
+		// Phase 6
+		HTTPTracer: d.httpTracer,
+		CacheMon:   d.cacheMon,
+		RateMon:    d.rateMon,
+		Bench:      d.benchRunner,
 	}
 
 	d.dashboard = dashboard.NewServer(addr, providers)
@@ -552,6 +597,48 @@ func (d *DevTool) CaptureCPUProfile(duration time.Duration) (*profiler.Profile, 
 // CaptureHeapProfile captures a heap profile snapshot.
 func (d *DevTool) CaptureHeapProfile() (*profiler.Profile, error) {
 	return d.prof.CaptureHeap()
+}
+
+// --- Phase 6: HTTP Client Tracer, Cache Monitor, Rate Limiter, Benchmarks ---
+
+// WrapHTTPClient returns an instrumented *http.Client that traces outgoing requests.
+func (d *DevTool) WrapHTTPClient(client *http.Client) *http.Client {
+	return d.httpTracer.WrapClient(client)
+}
+
+// HTTPTracer returns the HTTP client tracer.
+func (d *DevTool) HTTPTracer() *httptrace.Tracer {
+	return d.httpTracer
+}
+
+// CacheMonitor returns the cache monitor.
+func (d *DevTool) CacheMonitor() *cachemon.Monitor {
+	return d.cacheMon
+}
+
+// RegisterCache creates a named cache tracker.
+func (d *DevTool) RegisterCache(name string) *cachemon.Recorder {
+	return d.cacheMon.Register(name)
+}
+
+// RateLimitMonitor returns the rate limiter monitor.
+func (d *DevTool) RateLimitMonitor() *ratelimit.Monitor {
+	return d.rateMon
+}
+
+// RegisterRateLimiter creates a named rate limiter tracker.
+func (d *DevTool) RegisterRateLimiter(name string) *ratelimit.Recorder {
+	return d.rateMon.Register(name)
+}
+
+// Benchmark runs fn n times and returns statistics.
+func (d *DevTool) Benchmark(label string, n int, fn func()) bench.Result {
+	return d.benchRunner.Run(label, n, fn)
+}
+
+// BenchRunner returns the benchmark runner.
+func (d *DevTool) BenchRunner() *bench.Runner {
+	return d.benchRunner
 }
 
 func (d *DevTool) isColorized() bool {
