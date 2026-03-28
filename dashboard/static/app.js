@@ -35,6 +35,8 @@ document.getElementById('nav').addEventListener('click', (e) => {
     case 'caches': refreshCaches(); break;
     case 'ratelimits': refreshRateLimits(); break;
     case 'benchmarks': refreshBenchmarks(); break;
+    case 'alerts': refreshAlerts(); break;
+    case 'grpc': refreshGRPC(); break;
   }
 });
 
@@ -147,6 +149,12 @@ function handleEvent(evt) {
       break;
     case 'outgoing':
       updateBadge('out-count', 1);
+      break;
+    case 'alert':
+      updateBadge('alert-count', 1);
+      break;
+    case 'grpc':
+      updateBadge('grpc-count', 1);
       break;
   }
 }
@@ -533,6 +541,85 @@ async function refreshConfig() {
     html += '</tbody></table></div></div>';
   }
   el.innerHTML = html;
+}
+
+// --- Alerts ---
+async function refreshAlerts() {
+  const data = await fetchJSON('/api/alerts');
+  document.getElementById('alert-count').textContent = (data.active || []).length;
+
+  const cards = document.getElementById('alert-active-cards');
+  if (data.active && data.active.length > 0) {
+    let html = '';
+    for (const a of data.active) {
+      const sevColor = a.severity === 'critical' ? 'var(--red)' : a.severity === 'warning' ? 'var(--yellow)' : 'var(--accent)';
+      html += `<div class="card" style="border-left:3px solid ${sevColor}">
+        <div class="card-label">${escapeHtml(a.rule_name)}</div>
+        <div class="card-value" style="color:${sevColor};font-size:18px">FIRING</div>
+        <div style="font-size:12px;color:var(--text-muted)">${escapeHtml(a.message)} (val: ${a.value.toFixed(0)})</div>
+      </div>`;
+    }
+    cards.innerHTML = html;
+  } else {
+    cards.innerHTML = '<div class="card"><div class="card-value green" style="font-size:18px">All Clear</div><div class="card-label">No active alerts</div></div>';
+  }
+
+  const tbody = document.getElementById('alert-table');
+  tbody.innerHTML = '';
+  const alerts = data.alerts || [];
+  if (alerts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No alert history. Add rules with dt.AlertOnGoroutineCount() etc.</td></tr>';
+    return;
+  }
+  for (let i = alerts.length - 1; i >= 0; i--) {
+    const a = alerts[i];
+    const sevClass = a.severity === 'critical' ? 'level-ERROR' : a.severity === 'warning' ? 'level-WARN' : 'level-INFO';
+    const stateClass = a.state === 'firing' ? 'level-ERROR' : 'level-INFO';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatTime(a.timestamp)}</td>
+      <td><span class="${sevClass}">${escapeHtml(a.severity)}</span></td>
+      <td><span class="${stateClass}">${escapeHtml(a.state)}</span></td>
+      <td>${escapeHtml(a.rule_name)}</td>
+      <td>${escapeHtml(a.message)}</td>
+      <td>${a.value.toFixed(0)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// --- gRPC ---
+async function refreshGRPC() {
+  const calls = await fetchJSON('/api/grpc');
+  const tbody = document.getElementById('grpc-table');
+  tbody.innerHTML = '';
+  document.getElementById('grpc-count').textContent = calls ? calls.length : 0;
+
+  if (!calls || calls.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No gRPC calls recorded. Use dt.GRPCMonitor() interceptors.</td></tr>';
+    return;
+  }
+
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const c = calls[i];
+    const durClass = c.duration < 100000000 ? 'fast' : c.duration < 500000000 ? 'medium' : 'slow';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatTime(c.timestamp)}</td>
+      <td><span class="method method-${c.type === 'unary' ? 'GET' : 'POST'}">${escapeHtml(c.type)}</span></td>
+      <td>${escapeHtml(c.method)}</td>
+      <td style="color:var(--text-muted)">${escapeHtml(c.service)}</td>
+      <td><span class="duration ${durClass}">${formatDuration(c.duration)}</span></td>
+      <td>${c.is_server ? 'server' : 'client'}</td>
+      <td>${c.error ? '<span class="level-ERROR">' + escapeHtml(c.error) + '</span>' : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// --- Export ---
+function exportSnapshot(format) {
+  window.open('/api/export?format=' + format, '_blank');
 }
 
 // --- Outgoing HTTP ---

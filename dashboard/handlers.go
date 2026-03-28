@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tarunnahak/godevtool/alerts"
 	"github.com/tarunnahak/godevtool/bench"
 	"github.com/tarunnahak/godevtool/cachemon"
 	"github.com/tarunnahak/godevtool/config"
@@ -14,7 +15,10 @@ import (
 	"github.com/tarunnahak/godevtool/deps"
 	"github.com/tarunnahak/godevtool/environ"
 	"github.com/tarunnahak/godevtool/errtrack"
+	"github.com/tarunnahak/godevtool/export"
+	"github.com/tarunnahak/godevtool/grpcmon"
 	"github.com/tarunnahak/godevtool/goroutine"
+	"github.com/tarunnahak/godevtool/hotreload"
 	"github.com/tarunnahak/godevtool/httptrace"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
@@ -45,6 +49,11 @@ type DataProviders struct {
 	CacheMon   *cachemon.Monitor
 	RateMon    *ratelimit.Monitor
 	Bench      *bench.Runner
+	// Phase 7
+	Alerts    *alerts.Engine
+	GRPCMon   *grpcmon.Monitor
+	Exporter  *export.Exporter
+	HotReload func() hotreload.State
 }
 
 func (s *Server) registerAPIRoutes() {
@@ -66,6 +75,11 @@ func (s *Server) registerAPIRoutes() {
 	s.mux.HandleFunc("/api/caches", s.handleCaches)
 	s.mux.HandleFunc("/api/ratelimits", s.handleRateLimits)
 	s.mux.HandleFunc("/api/benchmarks", s.handleBenchmarks)
+	s.mux.HandleFunc("/api/alerts", s.handleAlerts)
+	s.mux.HandleFunc("/api/alerts/active", s.handleActiveAlerts)
+	s.mux.HandleFunc("/api/grpc", s.handleGRPC)
+	s.mux.HandleFunc("/api/export", s.handleExport)
+	s.mux.HandleFunc("/api/hotreload", s.handleHotReload)
 	s.mux.HandleFunc("/api/overview", s.handleOverview)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/events", s.handleSSE)
@@ -297,6 +311,83 @@ func (s *Server) handleBenchmarks(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, s.providers.Bench.Results())
 }
 
+// Phase 7 handlers
+
+func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Alerts == nil {
+		jsonResponse(w, map[string]any{"alerts": []any{}, "active": []any{}, "rules": []any{}})
+		return
+	}
+	jsonResponse(w, map[string]any{
+		"alerts": s.providers.Alerts.Alerts(),
+		"active": s.providers.Alerts.ActiveAlerts(),
+		"rules":  s.providers.Alerts.Rules(),
+	})
+}
+
+func (s *Server) handleActiveAlerts(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Alerts == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.Alerts.ActiveAlerts())
+}
+
+func (s *Server) handleGRPC(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.GRPCMon == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.GRPCMon.LastCalls(100))
+}
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	if s.providers.Exporter == nil {
+		http.Error(w, "exporter not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	switch format {
+	case "json":
+		data, err := s.providers.Exporter.CaptureJSON()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=godevtool-export.json")
+		w.Write(data)
+	case "html":
+		data, err := s.providers.Exporter.CaptureHTML()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Disposition", "attachment; filename=godevtool-report.html")
+		w.Write(data)
+	default:
+		http.Error(w, "unsupported format: use 'json' or 'html'", http.StatusBadRequest)
+	}
+}
+
+func (s *Server) handleHotReload(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.HotReload == nil {
+		jsonResponse(w, map[string]any{"status": "idle"})
+		return
+	}
+	jsonResponse(w, s.providers.HotReload())
+}
+
 type overviewData struct {
 	LogCount       int    `json:"log_count"`
 	RequestCount   int    `json:"request_count"`
@@ -311,6 +402,8 @@ type overviewData struct {
 	Uptime         string `json:"uptime"`
 	ProfileCount   int    `json:"profile_count"`
 	DepCount       int    `json:"dep_count"`
+	ActiveAlerts   int    `json:"active_alerts"`
+	GRPCCount      int    `json:"grpc_count"`
 	WSClients      int    `json:"ws_clients"`
 }
 
@@ -358,6 +451,12 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	if s.providers.Deps != nil {
 		d := s.providers.Deps()
 		data.DepCount = d.Total
+	}
+	if s.providers.Alerts != nil {
+		data.ActiveAlerts = s.providers.Alerts.ActiveCount()
+	}
+	if s.providers.GRPCMon != nil {
+		data.GRPCCount = s.providers.GRPCMon.Count()
 	}
 	data.WSClients = s.hub.clientCount()
 

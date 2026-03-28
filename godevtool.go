@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tarunnahak/godevtool/alerts"
 	"github.com/tarunnahak/godevtool/bench"
 	"github.com/tarunnahak/godevtool/cachemon"
 	"github.com/tarunnahak/godevtool/config"
@@ -15,7 +16,10 @@ import (
 	"github.com/tarunnahak/godevtool/deps"
 	"github.com/tarunnahak/godevtool/environ"
 	"github.com/tarunnahak/godevtool/errtrack"
+	"github.com/tarunnahak/godevtool/export"
+	"github.com/tarunnahak/godevtool/grpcmon"
 	"github.com/tarunnahak/godevtool/goroutine"
+	"github.com/tarunnahak/godevtool/hotreload"
 	"github.com/tarunnahak/godevtool/httptrace"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
@@ -70,6 +74,12 @@ type DevTool struct {
 	cacheMon    *cachemon.Monitor
 	rateMon     *ratelimit.Monitor
 	benchRunner *bench.Runner
+
+	// Phase 7
+	alertEngine *alerts.Engine
+	exporter    *export.Exporter
+	grpcMon     *grpcmon.Monitor
+	hotReload   *hotreload.Watcher
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -187,6 +197,38 @@ func New(opts ...Option) *DevTool {
 				"avg", r.AvgTime,
 				"p99", r.P99,
 			)
+		}),
+	)
+
+	// Phase 7: Alerts, export, gRPC monitor
+	dt.alertEngine = alerts.New(
+		alerts.WithOnAlert(func(a alerts.Alert) {
+			if a.State == alerts.StateFiring {
+				dt.Log.Warn("alert firing", "rule", a.RuleName, "value", a.Value, "severity", a.Severity)
+			} else {
+				dt.Log.Info("alert resolved", "rule", a.RuleName)
+			}
+			if dt.dashboard != nil {
+				dt.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "alert",
+					Data: a,
+				})
+			}
+		}),
+	)
+	dt.grpcMon = grpcmon.New(
+		grpcmon.WithOnCall(func(cl grpcmon.CallLog) {
+			dt.Log.Debug("grpc call",
+				"method", cl.Method,
+				"duration", cl.Duration,
+				"type", cl.Type,
+			)
+			if dt.dashboard != nil {
+				dt.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "grpc",
+					Data: cl,
+				})
+			}
 		}),
 	)
 
@@ -416,6 +458,13 @@ func (d *DevTool) StartDashboard(addr string) error {
 		CacheMon:   d.cacheMon,
 		RateMon:    d.rateMon,
 		Bench:      d.benchRunner,
+		// Phase 7
+		Alerts:   d.alertEngine,
+		GRPCMon:  d.grpcMon,
+		Exporter: d.getExporter(),
+		HotReload: func() hotreload.State {
+			return d.HotReloadState()
+		},
 	}
 
 	d.dashboard = dashboard.NewServer(addr, providers)
@@ -467,6 +516,8 @@ func (d *DevTool) StopDashboard() error {
 func (d *DevTool) Shutdown() {
 	d.StopGoroutineMonitor()
 	d.StopMemStats()
+	d.StopAlerts()
+	d.StopHotReload()
 	d.StopDashboard()
 }
 
@@ -639,6 +690,131 @@ func (d *DevTool) Benchmark(label string, n int, fn func()) bench.Result {
 // BenchRunner returns the benchmark runner.
 func (d *DevTool) BenchRunner() *bench.Runner {
 	return d.benchRunner
+}
+
+// --- Phase 7: Alerts, Export, gRPC, Hot Reload ---
+
+// AlertEngine returns the alert rules engine.
+func (d *DevTool) AlertEngine() *alerts.Engine {
+	return d.alertEngine
+}
+
+// AddAlertRule registers an alert rule.
+func (d *DevTool) AddAlertRule(rule alerts.Rule) {
+	d.alertEngine.AddRule(rule)
+}
+
+// AlertOnGoroutineCount adds a rule that fires when goroutine count exceeds threshold.
+func (d *DevTool) AlertOnGoroutineCount(threshold int) {
+	d.alertEngine.AddRule(alerts.GoroutineCountRule(threshold, alerts.SeverityWarning))
+}
+
+// AlertOnHeapAlloc adds a rule that fires when heap allocation exceeds threshold bytes.
+func (d *DevTool) AlertOnHeapAlloc(thresholdBytes uint64) {
+	d.alertEngine.AddRule(alerts.HeapAllocRule(thresholdBytes, alerts.SeverityWarning))
+}
+
+// StartAlerts begins periodic alert rule evaluation.
+func (d *DevTool) StartAlerts(interval time.Duration) {
+	if !d.enabled {
+		return
+	}
+	d.alertEngine = alerts.New(
+		alerts.WithCheckInterval(interval),
+		alerts.WithOnAlert(func(a alerts.Alert) {
+			if a.State == alerts.StateFiring {
+				d.Log.Warn("alert firing", "rule", a.RuleName, "value", a.Value, "severity", a.Severity)
+			} else {
+				d.Log.Info("alert resolved", "rule", a.RuleName)
+			}
+			if d.dashboard != nil {
+				d.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "alert",
+					Data: a,
+				})
+			}
+		}),
+	)
+	d.alertEngine.Start()
+	d.Log.Debug("alert engine started", "interval", interval)
+}
+
+// StopAlerts stops the alert engine.
+func (d *DevTool) StopAlerts() {
+	if d.alertEngine != nil {
+		d.alertEngine.Stop()
+	}
+}
+
+// ExportJSON captures a full debug snapshot as JSON.
+func (d *DevTool) ExportJSON() ([]byte, error) {
+	return d.getExporter().CaptureJSON()
+}
+
+// ExportHTML captures a full debug snapshot as a self-contained HTML report.
+func (d *DevTool) ExportHTML() ([]byte, error) {
+	return d.getExporter().CaptureHTML()
+}
+
+// ExportToFile writes a debug snapshot to a file.
+func (d *DevTool) ExportToFile(path, format string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return d.getExporter().WriteTo(f, format)
+}
+
+func (d *DevTool) getExporter() *export.Exporter {
+	return export.New(export.DataSource{
+		AppName:    d.opts.appName,
+		Environment: func() any { return d.envInfo },
+		Logs:       func() any { return d.Log.History() },
+		Requests:   func() any { return d.inspector.Requests() },
+		Goroutines: func() any { return d.GoroutineSnapshot() },
+		MemStats:   func() any { return d.MemSnapshot() },
+		Timers:     func() any { return d.report.All() },
+		Queries:    func() any { return d.dbLogger.Queries() },
+		Timeline:   func() any { return d.timeline.Events() },
+		Config:     func() any { return d.configView.Snapshot() },
+		Errors:     func() any { return d.errTracker.Stats() },
+		Outgoing:   func() any { return d.httpTracer.Traces() },
+		Caches:     func() any { return d.cacheMon.Stats() },
+		RateLimits: func() any { return d.rateMon.Stats() },
+		Benchmarks: func() any { return d.benchRunner.Results() },
+		Alerts:     func() any { return d.alertEngine.Alerts() },
+	})
+}
+
+// GRPCMonitor returns the gRPC call monitor.
+func (d *DevTool) GRPCMonitor() *grpcmon.Monitor {
+	return d.grpcMon
+}
+
+// StartHotReload begins file watching and auto-rebuild.
+func (d *DevTool) StartHotReload(opts ...hotreload.Option) error {
+	d.hotReload = hotreload.New(opts...)
+	if err := d.hotReload.Start(); err != nil {
+		return err
+	}
+	d.Log.Info("hot reload started")
+	return nil
+}
+
+// StopHotReload stops the file watcher.
+func (d *DevTool) StopHotReload() {
+	if d.hotReload != nil {
+		d.hotReload.Stop()
+	}
+}
+
+// HotReloadState returns the current hot reload state.
+func (d *DevTool) HotReloadState() hotreload.State {
+	if d.hotReload == nil {
+		return hotreload.State{Status: hotreload.StatusIdle}
+	}
+	return d.hotReload.GetState()
 }
 
 func (d *DevTool) isColorized() bool {

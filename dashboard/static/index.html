@@ -10,6 +10,8 @@
   <div class="header">
     <h1>godevtool <span>dashboard</span></h1>
     <div class="status">
+      <button class="btn" onclick="exportSnapshot('json')" style="margin-right:4px">Export JSON</button>
+      <button class="btn" onclick="exportSnapshot('html')" style="margin-right:8px">Export HTML</button>
       <div class="status-dot" id="ws-status"></div>
       <span id="ws-label">Disconnected</span>
     </div>
@@ -33,6 +35,8 @@
     <button data-tab="caches">Caches</button>
     <button data-tab="ratelimits">Rate Limits</button>
     <button data-tab="benchmarks">Benchmarks</button>
+    <button data-tab="alerts">Alerts <span class="nav-badge" id="alert-count">0</span></button>
+    <button data-tab="grpc">gRPC <span class="nav-badge" id="grpc-count">0</span></button>
   </div>
 
   <!-- Overview Panel -->
@@ -265,6 +269,40 @@
         <table>
           <thead><tr><th>Label</th><th>N</th><th>Avg</th><th>P50</th><th>P90</th><th>P99</th><th>Ops/sec</th></tr></thead>
           <tbody id="bench-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts Panel -->
+  <div class="panel" id="panel-alerts">
+    <div class="panel-header">
+      <div class="panel-title">Alert Rules</div>
+      <button class="btn" onclick="refreshAlerts()">Refresh</button>
+    </div>
+    <div class="overview" id="alert-active-cards"></div>
+    <div class="panel-title" style="margin:12px 0 8px">Alert History</div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Severity</th><th>State</th><th>Rule</th><th>Message</th><th>Value</th></tr></thead>
+          <tbody id="alert-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- gRPC Panel -->
+  <div class="panel" id="panel-grpc">
+    <div class="panel-header">
+      <div class="panel-title">gRPC Calls</div>
+      <button class="btn" onclick="refreshGRPC()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Method</th><th>Service</th><th>Duration</th><th>Side</th><th>Error</th></tr></thead>
+          <tbody id="grpc-table"></tbody>
         </table>
       </div>
     </div>
