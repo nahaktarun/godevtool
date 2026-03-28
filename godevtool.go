@@ -6,9 +6,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
 	"github.com/tarunnahak/godevtool/log"
+	"github.com/tarunnahak/godevtool/memstats"
+	"github.com/tarunnahak/godevtool/middleware"
 	"github.com/tarunnahak/godevtool/stack"
 	"github.com/tarunnahak/godevtool/timer"
 )
@@ -29,6 +32,11 @@ type DevTool struct {
 	output  io.Writer
 	enabled bool
 	report  *timer.Report
+
+	// Phase 2
+	inspector  *middleware.Inspector
+	goroutines *goroutine.Monitor
+	memstats   *memstats.Collector
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -56,13 +64,27 @@ func New(opts ...Option) *DevTool {
 		logger = logger.WithPrefix(o.appName)
 	}
 
-	return &DevTool{
+	dt := &DevTool{
 		Log:     logger,
 		opts:    o,
 		output:  out,
 		enabled: true,
 		report:  timer.NewReport(),
 	}
+
+	// Initialize middleware inspector with logging callback
+	dt.inspector = middleware.New(
+		middleware.WithOnLog(func(rl middleware.RequestLog) {
+			dt.Log.Debug("http request",
+				"method", rl.Method,
+				"path", rl.Path,
+				"status", rl.StatusCode,
+				"duration", rl.Duration,
+			)
+		}),
+	)
+
+	return dt
 }
 
 // Inspect pretty-prints any Go value to the configured output.
@@ -157,6 +179,104 @@ func (d *DevTool) Disable() {
 func (d *DevTool) Enable() {
 	d.enabled = true
 	d.Log.SetEnabled(true)
+}
+
+// --- Phase 2: HTTP Middleware, Goroutine Monitor, MemStats ---
+
+// Middleware returns the HTTP request/response inspector.
+func (d *DevTool) Middleware() *middleware.Inspector {
+	return d.inspector
+}
+
+// StartGoroutineMonitor begins tracking goroutines at the given interval.
+func (d *DevTool) StartGoroutineMonitor(interval time.Duration) {
+	if !d.enabled {
+		return
+	}
+	d.goroutines = goroutine.NewMonitor(interval)
+	d.goroutines.Start()
+	d.Log.Debug("goroutine monitor started", "interval", interval)
+}
+
+// StopGoroutineMonitor stops goroutine tracking.
+func (d *DevTool) StopGoroutineMonitor() {
+	if d.goroutines != nil {
+		d.goroutines.Stop()
+	}
+}
+
+// GoroutineSnapshot returns the current goroutine snapshot.
+func (d *DevTool) GoroutineSnapshot() goroutine.Snapshot {
+	if d.goroutines == nil {
+		return goroutine.Snapshot{}
+	}
+	return d.goroutines.Current()
+}
+
+// PrintGoroutines prints the current goroutine state to output.
+func (d *DevTool) PrintGoroutines() {
+	if !d.enabled {
+		return
+	}
+	var snap goroutine.Snapshot
+	if d.goroutines != nil {
+		snap = d.goroutines.Current()
+	} else {
+		// one-shot snapshot without starting the monitor
+		m := goroutine.NewMonitor(0)
+		snap = m.Current()
+	}
+	fmt.Fprint(d.output, goroutine.FormatSnapshot(snap, d.isColorized()))
+}
+
+// GoroutineLeakCheck returns suspected goroutine leaks.
+func (d *DevTool) GoroutineLeakCheck() []goroutine.GoroutineInfo {
+	if d.goroutines == nil {
+		return nil
+	}
+	return d.goroutines.LeakCheck()
+}
+
+// StartMemStats begins collecting memory/GC statistics at the given interval.
+func (d *DevTool) StartMemStats(interval time.Duration) {
+	if !d.enabled {
+		return
+	}
+	d.memstats = memstats.NewCollector(interval, 100)
+	d.memstats.Start()
+	d.Log.Debug("memstats collector started", "interval", interval)
+}
+
+// StopMemStats stops memory statistics collection.
+func (d *DevTool) StopMemStats() {
+	if d.memstats != nil {
+		d.memstats.Stop()
+	}
+}
+
+// MemSnapshot returns the current memory snapshot.
+func (d *DevTool) MemSnapshot() memstats.Snapshot {
+	if d.memstats != nil {
+		return d.memstats.Current()
+	}
+	// one-shot if collector not started
+	c := memstats.NewCollector(0, 1)
+	return c.Current()
+}
+
+// PrintMemStats prints the current memory statistics to output.
+func (d *DevTool) PrintMemStats() {
+	if !d.enabled {
+		return
+	}
+	snap := d.MemSnapshot()
+	memstats.PrintSnapshot(d.output, snap, d.isColorized())
+}
+
+// Shutdown stops all background monitors gracefully.
+func (d *DevTool) Shutdown() {
+	d.StopGoroutineMonitor()
+	d.StopMemStats()
 }
 
 func (d *DevTool) isColorized() bool {
