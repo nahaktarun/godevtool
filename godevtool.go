@@ -3,18 +3,23 @@ package godevtool
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/tarunnahak/godevtool/config"
 	"github.com/tarunnahak/godevtool/dashboard"
 	"github.com/tarunnahak/godevtool/dblog"
+	"github.com/tarunnahak/godevtool/deps"
+	"github.com/tarunnahak/godevtool/environ"
+	"github.com/tarunnahak/godevtool/errtrack"
 	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/inspect"
 	"github.com/tarunnahak/godevtool/internal/color"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
+	"github.com/tarunnahak/godevtool/profiler"
 	"github.com/tarunnahak/godevtool/stack"
 	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
@@ -49,6 +54,12 @@ type DevTool struct {
 	dbLogger   *dblog.Logger
 	timeline   *timeline.Timeline
 	configView *config.Viewer
+
+	// Phase 5
+	envInfo    environ.Info
+	depsResult *deps.ScanResult
+	errTracker *errtrack.Tracker
+	prof       *profiler.Profiler
 }
 
 // New creates a DevTool instance. Pass Option values to customize behavior.
@@ -121,6 +132,23 @@ func New(opts ...Option) *DevTool {
 		}),
 	)
 	dt.configView = config.New()
+
+	// Phase 5: Environment, deps, error tracker, profiler
+	dt.envInfo = environ.Detect(nil)
+	dt.errTracker = errtrack.New(
+		errtrack.WithOnError(func(te errtrack.TrackedError) {
+			if dt.dashboard != nil {
+				dt.dashboard.Hub().Broadcast(dashboard.Event{
+					Type: "error",
+					Data: te,
+				})
+			}
+			dt.timeline.Record(timeline.CatCustom, "error: "+te.Message, map[string]any{
+				"type": te.Type,
+			})
+		}),
+	)
+	dt.prof = profiler.New()
 
 	return dt
 }
@@ -333,6 +361,16 @@ func (d *DevTool) StartDashboard(addr string) error {
 		DBLogger: d.dbLogger,
 		Timeline: d.timeline,
 		Config:   d.configView,
+		// Phase 5
+		Environ: func() environ.Info {
+			info := d.envInfo
+			return info
+		},
+		Deps: func() deps.ScanResult {
+			return d.Dependencies()
+		},
+		ErrTracker: d.errTracker,
+		Profiler:   d.prof,
 	}
 
 	d.dashboard = dashboard.NewServer(addr, providers)
@@ -441,6 +479,79 @@ func (d *DevTool) PrintConfig() {
 	for _, snap := range d.configView.Snapshot() {
 		fmt.Fprint(d.output, config.FormatSnapshot(snap, d.isColorized()))
 	}
+}
+
+// --- Phase 5: Environment, Dependencies, Error Tracking, Profiler ---
+
+// Environ returns the detected environment info.
+func (d *DevTool) Environ() environ.Info {
+	return d.envInfo
+}
+
+// PrintEnviron prints environment info to the configured output.
+func (d *DevTool) PrintEnviron() {
+	if !d.enabled {
+		return
+	}
+	fmt.Fprint(d.output, environ.FormatInfo(d.envInfo, d.isColorized()))
+}
+
+// Dependencies returns the module dependency scan result.
+func (d *DevTool) Dependencies() deps.ScanResult {
+	if d.depsResult == nil {
+		result, _ := deps.ScanFromBuildInfo()
+		d.depsResult = &result
+	}
+	return *d.depsResult
+}
+
+// PrintDependencies prints dependencies to the configured output.
+func (d *DevTool) PrintDependencies() {
+	if !d.enabled {
+		return
+	}
+	fmt.Fprint(d.output, deps.FormatScanResult(d.Dependencies(), d.isColorized()))
+}
+
+// ErrorTracker returns the error tracker.
+func (d *DevTool) ErrorTracker() *errtrack.Tracker {
+	return d.errTracker
+}
+
+// TrackError records an error occurrence.
+func (d *DevTool) TrackError(err error, data ...map[string]any) {
+	if !d.enabled {
+		return
+	}
+	d.errTracker.Track(err, data...)
+}
+
+// RecoverMiddleware returns an HTTP handler that recovers panics and tracks them.
+func (d *DevTool) RecoverMiddleware(next http.Handler) http.Handler {
+	return d.errTracker.RecoverMiddleware(next)
+}
+
+// PrintErrorStats prints error statistics to the configured output.
+func (d *DevTool) PrintErrorStats() {
+	if !d.enabled {
+		return
+	}
+	fmt.Fprint(d.output, errtrack.FormatStats(d.errTracker.Stats(), d.isColorized()))
+}
+
+// Profiler returns the profiler.
+func (d *DevTool) Profiler() *profiler.Profiler {
+	return d.prof
+}
+
+// CaptureCPUProfile captures a CPU profile for the given duration.
+func (d *DevTool) CaptureCPUProfile(duration time.Duration) (*profiler.Profile, error) {
+	return d.prof.CaptureCPU(duration)
+}
+
+// CaptureHeapProfile captures a heap profile snapshot.
+func (d *DevTool) CaptureHeapProfile() (*profiler.Profile, error) {
+	return d.prof.CaptureHeap()
 }
 
 func (d *DevTool) isColorized() bool {

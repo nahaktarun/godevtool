@@ -5,13 +5,18 @@ import (
 	"fmt"
 	stdlog "log"
 	"net/http"
+	"time"
 
 	"github.com/tarunnahak/godevtool/config"
 	"github.com/tarunnahak/godevtool/dblog"
+	"github.com/tarunnahak/godevtool/deps"
+	"github.com/tarunnahak/godevtool/environ"
+	"github.com/tarunnahak/godevtool/errtrack"
 	"github.com/tarunnahak/godevtool/goroutine"
 	"github.com/tarunnahak/godevtool/log"
 	"github.com/tarunnahak/godevtool/memstats"
 	"github.com/tarunnahak/godevtool/middleware"
+	"github.com/tarunnahak/godevtool/profiler"
 	"github.com/tarunnahak/godevtool/timeline"
 	"github.com/tarunnahak/godevtool/timer"
 )
@@ -26,6 +31,11 @@ type DataProviders struct {
 	DBLogger   *dblog.Logger
 	Timeline   *timeline.Timeline
 	Config     *config.Viewer
+	// Phase 5
+	Environ    func() environ.Info
+	Deps       func() deps.ScanResult
+	ErrTracker *errtrack.Tracker
+	Profiler   *profiler.Profiler
 }
 
 func (s *Server) registerAPIRoutes() {
@@ -37,6 +47,12 @@ func (s *Server) registerAPIRoutes() {
 	s.mux.HandleFunc("/api/queries", s.handleQueries)
 	s.mux.HandleFunc("/api/timeline", s.handleTimeline)
 	s.mux.HandleFunc("/api/config", s.handleConfig)
+	s.mux.HandleFunc("/api/environ", s.handleEnviron)
+	s.mux.HandleFunc("/api/deps", s.handleDeps)
+	s.mux.HandleFunc("/api/errors", s.handleErrors)
+	s.mux.HandleFunc("/api/profiles", s.handleProfiles)
+	s.mux.HandleFunc("/api/profiles/capture", s.handleProfileCapture)
+	s.mux.HandleFunc("/api/profiles/download", s.handleProfileDownload)
 	s.mux.HandleFunc("/api/overview", s.handleOverview)
 	s.mux.HandleFunc("/ws", s.handleWebSocket)
 	s.mux.HandleFunc("/events", s.handleSSE)
@@ -114,6 +130,122 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, s.providers.Config.Snapshot())
 }
 
+// Phase 5 handlers
+
+func (s *Server) handleEnviron(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Environ == nil {
+		jsonResponse(w, map[string]any{})
+		return
+	}
+	jsonResponse(w, s.providers.Environ())
+}
+
+func (s *Server) handleDeps(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Deps == nil {
+		jsonResponse(w, map[string]any{})
+		return
+	}
+	jsonResponse(w, s.providers.Deps())
+}
+
+func (s *Server) handleErrors(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.ErrTracker == nil {
+		jsonResponse(w, map[string]any{})
+		return
+	}
+	jsonResponse(w, s.providers.ErrTracker.Stats())
+}
+
+func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Profiler == nil {
+		jsonResponse(w, []any{})
+		return
+	}
+	jsonResponse(w, s.providers.Profiler.Profiles())
+}
+
+func (s *Server) handleProfileCapture(w http.ResponseWriter, r *http.Request) {
+	setCORS(w)
+	if s.providers.Profiler == nil {
+		http.Error(w, "profiler not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	typ := r.URL.Query().Get("type")
+	if typ == "" {
+		typ = "heap"
+	}
+
+	var prof *profiler.Profile
+	var err error
+
+	switch typ {
+	case "cpu":
+		durationStr := r.URL.Query().Get("duration")
+		duration := 10 * time.Second
+		if durationStr != "" {
+			if d, parseErr := time.ParseDuration(durationStr); parseErr == nil {
+				duration = d
+			}
+		}
+		if duration > 60*time.Second {
+			duration = 60 * time.Second
+		}
+		// Run CPU capture in background, return immediately
+		go func() {
+			s.providers.Profiler.CaptureCPU(duration)
+		}()
+		jsonResponse(w, map[string]any{"status": "capturing", "type": "cpu", "duration": duration.String()})
+		return
+	case "heap":
+		prof, err = s.providers.Profiler.CaptureHeap()
+	case "goroutine":
+		prof, err = s.providers.Profiler.CaptureGoroutine()
+	case "mutex":
+		prof, err = s.providers.Profiler.CaptureMutex()
+	case "block":
+		prof, err = s.providers.Profiler.CaptureBlock()
+	case "allocs":
+		prof, err = s.providers.Profiler.CaptureAllocs()
+	default:
+		http.Error(w, "unknown profile type: "+typ, http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, prof)
+}
+
+func (s *Server) handleProfileDownload(w http.ResponseWriter, r *http.Request) {
+	if s.providers.Profiler == nil {
+		http.Error(w, "profiler not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+
+	data, ok := s.providers.Profiler.ProfileData(id)
+	if !ok {
+		http.Error(w, "profile not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.pprof", id))
+	w.Write(data)
+}
+
 type overviewData struct {
 	LogCount       int    `json:"log_count"`
 	RequestCount   int    `json:"request_count"`
@@ -123,6 +255,11 @@ type overviewData struct {
 	QueryCount     int    `json:"query_count"`
 	TimelineCount  int    `json:"timeline_count"`
 	ConfigCount    int    `json:"config_count"`
+	ErrorCount     int    `json:"error_count"`
+	GoVersion      string `json:"go_version"`
+	Uptime         string `json:"uptime"`
+	ProfileCount   int    `json:"profile_count"`
+	DepCount       int    `json:"dep_count"`
 	WSClients      int    `json:"ws_clients"`
 }
 
@@ -155,6 +292,21 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.providers.Config != nil {
 		data.ConfigCount = len(s.providers.Config.Names())
+	}
+	if s.providers.ErrTracker != nil {
+		data.ErrorCount = s.providers.ErrTracker.Count()
+	}
+	if s.providers.Environ != nil {
+		env := s.providers.Environ()
+		data.GoVersion = env.GoVersion
+		data.Uptime = env.UptimeStr()
+	}
+	if s.providers.Profiler != nil {
+		data.ProfileCount = s.providers.Profiler.Count()
+	}
+	if s.providers.Deps != nil {
+		d := s.providers.Deps()
+		data.DepCount = d.Total
 	}
 	data.WSClients = s.hub.clientCount()
 

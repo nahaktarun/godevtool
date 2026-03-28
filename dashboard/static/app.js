@@ -27,6 +27,10 @@ document.getElementById('nav').addEventListener('click', (e) => {
     case 'queries': refreshQueries(); break;
     case 'timeline': refreshTimeline(); break;
     case 'config': refreshConfig(); break;
+    case 'errors': refreshErrors(); break;
+    case 'environ': refreshEnviron(); break;
+    case 'deps': refreshDeps(); break;
+    case 'profiler': refreshProfiles(); break;
   }
 });
 
@@ -186,6 +190,26 @@ async function refreshOverview() {
     <div class="card">
       <div class="card-label">Config Sections</div>
       <div class="card-value purple">${data.config_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Errors</div>
+      <div class="card-value" style="color:var(--red)">${data.error_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Go Version</div>
+      <div class="card-value cyan" style="font-size:18px">${data.go_version || '—'}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Uptime</div>
+      <div class="card-value green" style="font-size:18px">${data.uptime || '—'}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Profiles</div>
+      <div class="card-value purple">${data.profile_count || 0}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Dependencies</div>
+      <div class="card-value accent">${data.dep_count || 0}</div>
     </div>
     <div class="card">
       <div class="card-label">WS Clients</div>
@@ -502,6 +526,143 @@ async function refreshConfig() {
     html += '</tbody></table></div></div>';
   }
   el.innerHTML = html;
+}
+
+// --- Errors ---
+async function refreshErrors() {
+  const stats = await fetchJSON('/api/errors');
+  document.getElementById('err-count').textContent = stats.total || 0;
+
+  const cards = document.getElementById('error-rate-cards');
+  cards.innerHTML = `
+    ${memCard('Total Errors', stats.total || 0)}
+    ${memCard('Last 1 min', stats.last_1min || 0)}
+    ${memCard('Last 5 min', stats.last_5min || 0)}
+    ${memCard('Last 15 min', stats.last_15min || 0)}
+  `;
+
+  const tbody = document.getElementById('error-groups-table');
+  tbody.innerHTML = '';
+  if (stats.top_groups) {
+    for (const g of stats.top_groups) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span style="color:var(--red);font-weight:600">${g.count}</span></td>
+        <td><span class="method method-${g.type === 'panic' ? 'DELETE' : 'PUT'}">${escapeHtml(g.type)}</span></td>
+        <td>${escapeHtml(g.message)}</td>
+        <td style="color:var(--text-muted)">${formatTime(g.first_seen)}</td>
+        <td style="color:var(--text-muted)">${formatTime(g.last_seen)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+  if (!stats.top_groups || stats.top_groups.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No errors tracked yet.</td></tr>';
+  }
+}
+
+// --- Environment ---
+async function refreshEnviron() {
+  const env = await fetchJSON('/api/environ');
+  const grid = document.getElementById('environ-grid');
+
+  let buildRev = '—';
+  if (env.build_info && env.build_info.vcs_revision) {
+    buildRev = env.build_info.vcs_revision.substring(0, 8);
+    if (env.build_info.vcs_modified) buildRev += ' (modified)';
+  }
+
+  grid.innerHTML = `
+    ${memCard('Go Version', env.go_version || '—')}
+    ${memCard('OS / Arch', (env.os || '?') + '/' + (env.arch || '?'))}
+    ${memCard('CPUs', env.num_cpu || '—')}
+    ${memCard('Hostname', env.hostname || '—')}
+    ${memCard('PID', env.pid || '—')}
+    ${memCard('Git Revision', buildRev)}
+    ${memCard('Working Dir', env.work_dir || '—')}
+    ${memCard('Executable', (env.executable || '—').split('/').pop())}
+  `;
+
+  const tbody = document.getElementById('envvar-table');
+  tbody.innerHTML = '';
+  if (env.env_vars) {
+    for (const [k, v] of Object.entries(env.env_vars).sort()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td style="color:var(--accent)">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+}
+
+// --- Dependencies ---
+async function refreshDeps() {
+  const data = await fetchJSON('/api/deps');
+  const tbody = document.getElementById('deps-table');
+  tbody.innerHTML = '';
+
+  if (!data.modules || data.modules.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">No dependencies (zero-dep project).</td></tr>';
+    return;
+  }
+
+  for (const m of data.modules) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(m.path)}</td>
+      <td style="color:var(--green)">${escapeHtml(m.version)}</td>
+      <td style="color:var(--text-muted)">${m.indirect ? 'indirect' : 'direct'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// --- Profiler ---
+async function refreshProfiles() {
+  const profiles = await fetchJSON('/api/profiles');
+  const tbody = document.getElementById('profiles-table');
+  tbody.innerHTML = '';
+
+  if (!profiles || profiles.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No profiles captured yet. Click a button above.</td></tr>';
+    return;
+  }
+
+  for (let i = profiles.length - 1; i >= 0; i--) {
+    const p = profiles[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatTime(p.timestamp)}</td>
+      <td><span class="method method-GET">${escapeHtml(p.type)}</span></td>
+      <td>${formatBytes(p.size)}</td>
+      <td>${p.duration ? formatDuration(p.duration) : '—'}</td>
+      <td><a href="/api/profiles/download?id=${p.id}" style="color:var(--accent)" download>Download</a></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+async function captureProfile(type) {
+  const btn = event.target;
+  const origText = btn.textContent;
+  btn.textContent = 'Capturing...';
+  btn.disabled = true;
+
+  try {
+    const params = type === 'cpu' ? '?type=cpu&duration=10s' : '?type=' + type;
+    await fetch('/api/profiles/capture' + params, { method: 'GET' });
+    if (type === 'cpu') {
+      // CPU capture runs async, poll for completion
+      setTimeout(() => { refreshProfiles(); btn.textContent = origText; btn.disabled = false; }, 11000);
+    } else {
+      await refreshProfiles();
+      btn.textContent = origText;
+      btn.disabled = false;
+    }
+  } catch (e) {
+    console.error('Profile capture failed:', e);
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
 }
 
 // --- Helpers ---

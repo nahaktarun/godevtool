@@ -25,6 +25,10 @@
     <button data-tab="queries">Queries <span class="nav-badge" id="query-count">0</span></button>
     <button data-tab="timeline">Timeline <span class="nav-badge" id="tl-count">0</span></button>
     <button data-tab="config">Config</button>
+    <button data-tab="errors">Errors <span class="nav-badge" id="err-count">0</span></button>
+    <button data-tab="environ">Environment</button>
+    <button data-tab="deps">Dependencies</button>
+    <button data-tab="profiler">Profiler</button>
   </div>
 
   <!-- Overview Panel -->
@@ -138,6 +142,78 @@
       <button class="btn" onclick="refreshConfig()">Refresh</button>
     </div>
     <div class="scroll-content" id="config-list"></div>
+  </div>
+
+  <!-- Errors Panel -->
+  <div class="panel" id="panel-errors">
+    <div class="panel-header">
+      <div class="panel-title">Error Tracking</div>
+      <button class="btn" onclick="refreshErrors()">Refresh</button>
+    </div>
+    <div class="overview" id="error-rate-cards"></div>
+    <div class="scroll-content">
+      <div class="panel-title" style="margin:12px 0 8px">Top Error Groups</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Count</th><th>Type</th><th>Message</th><th>First Seen</th><th>Last Seen</th></tr></thead>
+          <tbody id="error-groups-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Environment Panel -->
+  <div class="panel" id="panel-environ">
+    <div class="panel-header">
+      <div class="panel-title">Environment</div>
+      <button class="btn" onclick="refreshEnviron()">Refresh</button>
+    </div>
+    <div class="mem-grid" id="environ-grid"></div>
+    <div class="panel-title" style="margin:16px 0 8px">Environment Variables</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Value</th></tr></thead>
+        <tbody id="envvar-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Dependencies Panel -->
+  <div class="panel" id="panel-deps">
+    <div class="panel-header">
+      <div class="panel-title">Dependencies</div>
+      <button class="btn" onclick="refreshDeps()">Refresh</button>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Module</th><th>Version</th><th>Type</th></tr></thead>
+          <tbody id="deps-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profiler Panel -->
+  <div class="panel" id="panel-profiler">
+    <div class="panel-header">
+      <div class="panel-title">Profiler</div>
+      <div>
+        <button class="btn" onclick="captureProfile('heap')">Heap</button>
+        <button class="btn" onclick="captureProfile('cpu')">CPU (10s)</button>
+        <button class="btn" onclick="captureProfile('goroutine')">Goroutine</button>
+        <button class="btn" onclick="captureProfile('allocs')">Allocs</button>
+        <button class="btn" onclick="refreshProfiles()">Refresh</button>
+      </div>
+    </div>
+    <div class="scroll-content">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Size</th><th>Duration</th><th>Download</th></tr></thead>
+          <tbody id="profiles-table"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
