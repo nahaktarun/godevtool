@@ -1,5 +1,6 @@
 # godevtool
 
+[![CI](https://github.com/nahaktarun/godevtool/actions/workflows/ci.yml/badge.svg)](https://github.com/nahaktarun/godevtool/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/nahaktarun/godevtool.svg)](https://pkg.go.dev/github.com/nahaktarun/godevtool)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nahaktarun/godevtool)](https://goreportcard.com/report/github.com/nahaktarun/godevtool)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/nahaktarun/godevtool/blob/main/LICENSE)
