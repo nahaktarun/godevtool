@@ -45,15 +45,22 @@ func (i Info) Uptime() time.Duration {
 
 // UptimeStr returns human-readable uptime.
 func (i Info) UptimeStr() string {
-	d := i.Uptime()
+	return formatUptime(i.Uptime())
+}
+
+// formatUptime formats a duration into a human-readable string.
+func formatUptime(d time.Duration) string {
+	d = d.Truncate(time.Second)
 	if d < time.Minute {
-		return fmt.Sprintf("%.0fs", d.Seconds())
+		return fmt.Sprintf("%ds", int(d.Seconds()))
 	}
 	if d < time.Hour {
-		return fmt.Sprintf("%.0fm %.0fs", d.Minutes(), d.Seconds()-d.Minutes()*60)
+		m := int(d / time.Minute)
+		s := int((d % time.Minute) / time.Second)
+		return fmt.Sprintf("%dm %ds", m, s)
 	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
+	h := int(d / time.Hour)
+	m := int((d % time.Hour) / time.Minute)
 	return fmt.Sprintf("%dh %dm", h, m)
 }
 

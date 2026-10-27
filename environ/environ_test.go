@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDetect(t *testing.T) {
@@ -91,5 +92,31 @@ func TestBuildInfo(t *testing.T) {
 		if info.BuildInfo.GoVersion == "" {
 			t.Error("BuildInfo.GoVersion empty")
 		}
+	}
+}
+
+func TestFormatUptime(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		{name: "0s", duration: 0, expected: "0s"},
+		{name: "59.6s", duration: 59*time.Second + 600*time.Millisecond, expected: "59s"},
+		{name: "60s", duration: 60 * time.Second, expected: "1m 0s"},
+		{name: "90s", duration: 90 * time.Second, expected: "1m 30s"},
+		{name: "150s", duration: 150 * time.Second, expected: "2m 30s"},
+		{name: "59m59s", duration: 59*time.Minute + 59*time.Second, expected: "59m 59s"},
+		{name: "1h", duration: time.Hour, expected: "1h 0m"},
+		{name: "3h5m", duration: 3*time.Hour + 5*time.Minute, expected: "3h 5m"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatUptime(tc.duration)
+			if got != tc.expected {
+				t.Errorf("formatUptime(%v) = %q, want %q", tc.duration, got, tc.expected)
+			}
+		})
 	}
 }
