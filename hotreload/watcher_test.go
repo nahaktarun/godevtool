@@ -61,12 +61,15 @@ func TestDetectChanges(t *testing.T) {
 	testFile := filepath.Join(dir, "main.go")
 	os.WriteFile(testFile, []byte("package main"), 0644)
 
-	w := New(WithDirs(dir))
+	w := New(WithDirs(dir), WithExclude("vendor"))
 	w.snapshot() // take initial snapshot
 
 	// modify file
-	time.Sleep(50 * time.Millisecond)
 	os.WriteFile(testFile, []byte("package main\n// changed"), 0644)
+	futureTime := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(testFile, futureTime, futureTime); err != nil {
+		t.Fatalf("failed to update file mtime: %v", err)
+	}
 
 	changes := w.detectChanges()
 	if len(changes) != 1 {
@@ -127,16 +130,21 @@ func TestOnEventCallback(t *testing.T) {
 	var events []Event
 	w := New(
 		WithDirs(dir),
+		WithExclude("vendor"),
 		WithOnEvent(func(evt Event) {
 			events = append(events, evt)
 		}),
 	)
 	w.snapshot()
 
-	time.Sleep(50 * time.Millisecond)
 	os.WriteFile(testFile, []byte("package main\n// v2"), 0644)
+	futureTime := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(testFile, futureTime, futureTime); err != nil {
+		t.Fatalf("failed to update file mtime: %v", err)
+	}
 
 	changes := w.detectChanges()
+
 	for _, evt := range changes {
 		if w.onEvent != nil {
 			w.onEvent(evt)
