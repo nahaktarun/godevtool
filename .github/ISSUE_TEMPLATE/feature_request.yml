@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a new capability or an API change for godevtool
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search the
+        [open issues](https://github.com/nahaktarun/godevtool/issues?q=is%3Aissue+is%3Aopen)
+        and the [API reference](https://pkg.go.dev/github.com/nahaktarun/godevtool)
+        before opening a request — it may already exist or be planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you unable to do today? A concrete use case is more useful than an abstract capability.
+      placeholder: |
+        I want to see which goroutines were started by the request I am debugging,
+        but the goroutine monitor only shows a global count.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-api
+    attributes:
+      label: Proposed API
+      description: The Go signature you have in mind, and the package it would live in. Naming it helps us discuss the shape before anyone writes code.
+      render: go
+      placeholder: |
+        // package goroutine
+        func Since(start time.Time) []Stack
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you ruled out, and why. Include what you are doing today to work around the problem.
+    validations:
+      required: true
