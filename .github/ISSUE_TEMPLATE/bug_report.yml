@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in godevtool does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please search the
+        [open issues](https://github.com/nahaktarun/godevtool/issues?q=is%3Aissue+is%3Aopen)
+        first — the problem may already be tracked there.
+
+  - type: input
+    id: godevtool-version
+    attributes:
+      label: godevtool version
+      description: The version in your `go.mod`, or the commit hash if you are on `main`.
+      placeholder: v0.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: The output of `go version`.
+      placeholder: go version go1.23.1 darwin/arm64
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: The OS and architecture where the problem happens.
+      placeholder: macOS 15.2 (arm64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal code to reproduce
+      description: |
+        The smallest runnable program that shows the problem. Please paste the code
+        itself rather than a screenshot, so it can be copied and run.
+      render: go
+      placeholder: |
+        package main
+
+        import (
+        	"fmt"
+
+        	"github.com/nahaktarun/godevtool"
+        )
+
+        func main() {
+        	dev := godevtool.New()
+        	// ...
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Expected and actual behaviour
+      description: What you expected to happen, and what happened instead. Include the error output or panic if there is one.
+      value: |
+        Expected:
+
+        Actual:
+    validations:
+      required: true

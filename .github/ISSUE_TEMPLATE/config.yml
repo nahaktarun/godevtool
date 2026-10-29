@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: API reference and examples
+    url: https://pkg.go.dev/github.com/nahaktarun/godevtool
+    about: Every exported type and function, with runnable examples.
+  - name: Usage guide
+    url: https://github.com/nahaktarun/godevtool#usage-guide
+    about: The README covers logging, inspection, HTTP tracing, the dashboard and more.
