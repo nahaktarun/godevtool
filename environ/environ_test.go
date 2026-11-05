@@ -63,6 +63,7 @@ func TestDetectDefaultFilter(t *testing.T) {
 
 func TestUptime(t *testing.T) {
 	info := Detect(nil)
+	time.Sleep(10 * time.Millisecond)
 	uptime := info.Uptime()
 	if uptime <= 0 {
 		t.Errorf("uptime = %v, expected > 0", uptime)
