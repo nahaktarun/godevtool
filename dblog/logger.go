@@ -3,7 +3,6 @@ package dblog
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
 	"runtime"
 	"strings"
@@ -242,13 +241,3 @@ func extractOperation(query string) string {
 	}
 	return strings.ToUpper(q[:end])
 }
-
-// Ensure DB satisfies the driver.Driver interface pattern is not needed —
-// we wrap at the sql.DB level, not driver level, for maximum compatibility.
-var _ driver.Driver = (*wrappedDriver)(nil)
-
-// wrappedDriver is unused but kept to show the interface is understood.
-// The actual wrapping happens at the sql.DB/Tx level above.
-type wrappedDriver struct{}
-
-func (wrappedDriver) Open(string) (driver.Conn, error) { return nil, fmt.Errorf("not implemented") }

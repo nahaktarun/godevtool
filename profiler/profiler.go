@@ -24,12 +24,12 @@ type Profile struct {
 
 // Profiler manages pprof profile capture.
 type Profiler struct {
-	mu         sync.Mutex
-	capturing  bool // true if CPU profile is in progress
-	store      *ringbuf.Buffer[Profile]
-	profiles   map[string]*Profile
-	counter    uint64
-	onCapture  func(Profile)
+	mu        sync.Mutex
+	capturing bool // true if CPU profile is in progress
+	store     *ringbuf.Buffer[Profile]
+	profiles  map[string]*Profile
+	counter   uint64
+	onCapture func(Profile)
 }
 
 // Option configures the Profiler.

@@ -2,16 +2,18 @@ package alerts
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func TestAddRuleAndEvaluate(t *testing.T) {
-	var fired bool
+	var fired atomic.Bool
 	e := New(
 		WithCheckInterval(50*time.Millisecond),
 		WithOnAlert(func(a Alert) {
-			fired = true
+			fired.Store(true)
 		}),
 	)
 
@@ -30,7 +32,7 @@ func TestAddRuleAndEvaluate(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	e.Stop()
 
-	if !fired {
+	if !fired.Load() {
 		t.Error("alert callback not invoked")
 	}
 
@@ -47,13 +49,20 @@ func TestAddRuleAndEvaluate(t *testing.T) {
 }
 
 func TestAlertResolution(t *testing.T) {
-	firing := true
-	var states []AlertState
+	var firing atomic.Bool
+	firing.Store(true)
+
+	var (
+		mu     sync.Mutex
+		states []AlertState
+	)
 
 	e := New(
 		WithCheckInterval(50*time.Millisecond),
 		WithOnAlert(func(a Alert) {
+			mu.Lock()
 			states = append(states, a.State)
+			mu.Unlock()
 		}),
 	)
 
@@ -61,7 +70,7 @@ func TestAlertResolution(t *testing.T) {
 		Name:     "flip_rule",
 		Severity: SeverityInfo,
 		Condition: func() (float64, bool) {
-			return 1, firing
+			return 1, firing.Load()
 		},
 		Message:  "flipping alert",
 		Cooldown: 0, // no cooldown for test
@@ -70,18 +79,22 @@ func TestAlertResolution(t *testing.T) {
 	e.Start()
 	time.Sleep(100 * time.Millisecond)
 
-	firing = false // resolve
+	firing.Store(false)
 	time.Sleep(150 * time.Millisecond)
 	e.Stop()
 
-	if len(states) < 2 {
-		t.Fatalf("expected at least 2 state transitions, got %d", len(states))
+	mu.Lock()
+	snapshot := append([]AlertState(nil), states...)
+	mu.Unlock()
+
+	if len(snapshot) < 2 {
+		t.Fatalf("expected at least 2 state transitions, got %d", len(snapshot))
 	}
-	if states[0] != StateFiring {
-		t.Errorf("first state = %q, want firing", states[0])
+	if snapshot[0] != StateFiring {
+		t.Errorf("first state = %q, want firing", snapshot[0])
 	}
-	if states[1] != StateResolved {
-		t.Errorf("second state = %q, want resolved", states[1])
+	if snapshot[1] != StateResolved {
+		t.Errorf("second state = %q, want resolved", snapshot[1])
 	}
 
 	if e.ActiveCount() != 0 {

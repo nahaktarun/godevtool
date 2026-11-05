@@ -17,8 +17,8 @@ import (
 	"github.com/nahaktarun/godevtool/environ"
 	"github.com/nahaktarun/godevtool/errtrack"
 	"github.com/nahaktarun/godevtool/export"
-	"github.com/nahaktarun/godevtool/grpcmon"
 	"github.com/nahaktarun/godevtool/goroutine"
+	"github.com/nahaktarun/godevtool/grpcmon"
 	"github.com/nahaktarun/godevtool/hotreload"
 	"github.com/nahaktarun/godevtool/httptrace"
 	"github.com/nahaktarun/godevtool/inspect"
@@ -77,7 +77,6 @@ type DevTool struct {
 
 	// Phase 7
 	alertEngine *alerts.Engine
-	exporter    *export.Exporter
 	grpcMon     *grpcmon.Monitor
 	hotReload   *hotreload.Watcher
 }
@@ -768,22 +767,22 @@ func (d *DevTool) ExportToFile(path, format string) error {
 
 func (d *DevTool) getExporter() *export.Exporter {
 	return export.New(export.DataSource{
-		AppName:    d.opts.appName,
+		AppName:     d.opts.appName,
 		Environment: func() any { return d.envInfo },
-		Logs:       func() any { return d.Log.History() },
-		Requests:   func() any { return d.inspector.Requests() },
-		Goroutines: func() any { return d.GoroutineSnapshot() },
-		MemStats:   func() any { return d.MemSnapshot() },
-		Timers:     func() any { return d.report.All() },
-		Queries:    func() any { return d.dbLogger.Queries() },
-		Timeline:   func() any { return d.timeline.Events() },
-		Config:     func() any { return d.configView.Snapshot() },
-		Errors:     func() any { return d.errTracker.Stats() },
-		Outgoing:   func() any { return d.httpTracer.Traces() },
-		Caches:     func() any { return d.cacheMon.Stats() },
-		RateLimits: func() any { return d.rateMon.Stats() },
-		Benchmarks: func() any { return d.benchRunner.Results() },
-		Alerts:     func() any { return d.alertEngine.Alerts() },
+		Logs:        func() any { return d.Log.History() },
+		Requests:    func() any { return d.inspector.Requests() },
+		Goroutines:  func() any { return d.GoroutineSnapshot() },
+		MemStats:    func() any { return d.MemSnapshot() },
+		Timers:      func() any { return d.report.All() },
+		Queries:     func() any { return d.dbLogger.Queries() },
+		Timeline:    func() any { return d.timeline.Events() },
+		Config:      func() any { return d.configView.Snapshot() },
+		Errors:      func() any { return d.errTracker.Stats() },
+		Outgoing:    func() any { return d.httpTracer.Traces() },
+		Caches:      func() any { return d.cacheMon.Stats() },
+		RateLimits:  func() any { return d.rateMon.Stats() },
+		Benchmarks:  func() any { return d.benchRunner.Results() },
+		Alerts:      func() any { return d.alertEngine.Alerts() },
 	})
 }
 

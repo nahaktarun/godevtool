@@ -33,17 +33,17 @@ type ErrorGroup struct {
 	Count       int       `json:"count"`
 	FirstSeen   time.Time `json:"first_seen"`
 	LastSeen    time.Time `json:"last_seen"`
-	SampleStack string   `json:"sample_stack"`
+	SampleStack string    `json:"sample_stack"`
 }
 
 // Stats holds error rate statistics.
 type Stats struct {
-	Total     int          `json:"total"`
-	Last1Min  int          `json:"last_1min"`
-	Last5Min  int          `json:"last_5min"`
-	Last15Min int          `json:"last_15min"`
+	Total     int            `json:"total"`
+	Last1Min  int            `json:"last_1min"`
+	Last5Min  int            `json:"last_5min"`
+	Last15Min int            `json:"last_15min"`
 	ByType    map[string]int `json:"by_type"`
-	TopGroups []ErrorGroup `json:"top_groups"`
+	TopGroups []ErrorGroup   `json:"top_groups"`
 }
 
 // Tracker captures and groups errors.

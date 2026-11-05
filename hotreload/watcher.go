@@ -42,16 +42,16 @@ type State struct {
 
 // Watcher monitors file changes and triggers rebuilds.
 type Watcher struct {
-	mu         sync.Mutex
-	dirs       []string
-	extensions []string
-	exclude    []string
-	buildCmd   string
-	runArgs    []string
-	debounce   time.Duration
+	mu           sync.Mutex
+	dirs         []string
+	extensions   []string
+	exclude      []string
+	buildCmd     string
+	runArgs      []string
+	debounce     time.Duration
 	pollInterval time.Duration
-	onEvent    func(Event)
-	onBuild    func(State)
+	onEvent      func(Event)
+	onBuild      func(State)
 
 	state    State
 	stopCh   chan struct{}
