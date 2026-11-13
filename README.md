@@ -185,6 +185,8 @@ dt.StartDashboard(":9999")
 
 The dashboard provides 19 real-time tabs: Overview, Logs, Requests, Goroutines, Memory, Timers, Queries, Timeline, Config, Errors, Environment, Dependencies, Profiler, Outgoing HTTP, Caches, Rate Limits, Benchmarks, Alerts, gRPC.
 
+The Environment tab and exports collect selected environment variables; values whose names suggest credentials or other secrets (such as `APP_DB_PASSWORD` or `SERVICE_TOKEN`) are masked as `********`, including when a custom environment filter is used.
+
 ### Database Query Logging
 
 ```go

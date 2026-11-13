@@ -68,6 +68,8 @@ func formatUptime(d time.Duration) string {
 func defaultEnvFilter(key string) bool {
 	safe := []string{
 		"GOPATH", "GOROOT", "GOBIN", "GOPROXY", "GONOSUMCHECK",
+		"GOOS", "GOARCH", "GOFLAGS", "GOMAXPROCS", "GOMEMLIMIT", "GOGC",
+		"GODEBUG", "GOTOOLCHAIN", "GOPRIVATE", "GOWORK", "GOCACHE", "GOMODCACHE",
 		"HOME", "USER", "LOGNAME", "SHELL", "TERM",
 		"PATH", "LANG", "LC_ALL",
 		"PORT", "HOST", "ADDR",
@@ -81,13 +83,24 @@ func defaultEnvFilter(key string) bool {
 			return true
 		}
 	}
-	// include anything with common prefixes
-	for _, prefix := range []string{"GO", "APP_", "SERVICE_"} {
+	// Keep application/service settings, but never include arbitrary GO-prefixed keys.
+	for _, prefix := range []string{"APP_", "SERVICE_"} {
 		if strings.HasPrefix(upper, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+// redactEnvValue masks secrets even if an application supplies its own filter.
+func redactEnvValue(key, value string) string {
+	upper := strings.ToUpper(key)
+	for _, marker := range []string{"PASSWORD", "PASSWD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PRIVATE"} {
+		if strings.Contains(upper, marker) {
+			return "********"
+		}
+	}
+	return value
 }
 
 // Detect collects all environment info. Pass nil for envFilter to use defaults.
@@ -117,7 +130,7 @@ func Detect(envFilter func(key string) bool) Info {
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 && envFilter(parts[0]) {
-			info.EnvVars[parts[0]] = parts[1]
+			info.EnvVars[parts[0]] = redactEnvValue(parts[0], parts[1])
 		}
 	}
 
