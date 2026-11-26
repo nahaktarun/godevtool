@@ -22,6 +22,7 @@ import (
 	"github.com/nahaktarun/godevtool/hotreload"
 	"github.com/nahaktarun/godevtool/httptrace"
 	"github.com/nahaktarun/godevtool/inspect"
+	"github.com/nahaktarun/godevtool/internal/buildinfo"
 	"github.com/nahaktarun/godevtool/internal/color"
 	"github.com/nahaktarun/godevtool/log"
 	"github.com/nahaktarun/godevtool/memstats"
@@ -430,6 +431,7 @@ func (d *DevTool) StartDashboard(addr string) error {
 	}
 
 	providers := dashboard.DataProviders{
+		Version:    buildinfo.Version(),
 		Logger:     d.Log,
 		Middleware: d.inspector,
 		Goroutine: func() goroutine.Snapshot {
@@ -767,6 +769,7 @@ func (d *DevTool) ExportToFile(path, format string) error {
 
 func (d *DevTool) getExporter() *export.Exporter {
 	return export.New(export.DataSource{
+		Version:     buildinfo.Version(),
 		AppName:     d.opts.appName,
 		Environment: func() any { return d.envInfo },
 		Logs:        func() any { return d.Log.History() },

@@ -173,6 +173,8 @@ async function fetchJSON(path) {
 async function refreshOverview() {
   const data = await fetchJSON('/api/overview');
   const cards = document.getElementById('overview-cards');
+  const version = document.getElementById('godevtool-version');
+  if (version) version.textContent = 'Version ' + (data.version || '(devel)');
   cards.innerHTML = `
     <div class="card">
       <div class="card-label">Log Entries</div>

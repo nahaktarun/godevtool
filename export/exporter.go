@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	stdhtml "html"
 	"time"
 )
 
 // Snapshot captures the complete application debug state.
 type Snapshot struct {
+	Version     string          `json:"version"`
 	Timestamp   time.Time       `json:"timestamp"`
 	AppName     string          `json:"app_name,omitempty"`
 	Environment json.RawMessage `json:"environment,omitempty"`
@@ -30,6 +32,7 @@ type Snapshot struct {
 
 // DataSource provides data for export. Each function returns JSON-serializable data.
 type DataSource struct {
+	Version     string
 	AppName     string
 	Environment func() any
 	Logs        func() any
@@ -70,7 +73,7 @@ func (e *Exporter) CaptureHTML() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return generateHTMLReport(jsonData, e.source.AppName)
+	return generateHTMLReport(jsonData, e.source.AppName, e.source.Version)
 }
 
 // WriteTo writes the snapshot to a writer in the given format ("json" or "html").
@@ -96,6 +99,7 @@ func (e *Exporter) WriteTo(w io.Writer, format string) error {
 
 func (e *Exporter) capture() Snapshot {
 	snap := Snapshot{
+		Version:   e.source.Version,
 		Timestamp: time.Now(),
 		AppName:   e.source.AppName,
 	}
@@ -130,7 +134,7 @@ func marshalSafe(fn func() any) json.RawMessage {
 	return data
 }
 
-func generateHTMLReport(jsonData []byte, appName string) ([]byte, error) {
+func generateHTMLReport(jsonData []byte, appName, version string) ([]byte, error) {
 	title := "godevtool Debug Report"
 	if appName != "" {
 		title = appName + " — " + title
@@ -160,7 +164,7 @@ td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
 </head>
 <body>
 <h1>%s</h1>
-<div class="meta">Captured at %s</div>
+<div class="meta">Version %s · Captured at %s</div>
 <div id="sections"></div>
 <script>
 const data = %s;
@@ -177,7 +181,7 @@ keys.forEach(key => {
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 </body>
-</html>`, title, title, time.Now().Format("2006-01-02 15:04:05"), string(jsonData))
+</html>`, title, title, stdhtml.EscapeString(version), time.Now().Format("2006-01-02 15:04:05"), string(jsonData))
 
 	return []byte(html), nil
 }

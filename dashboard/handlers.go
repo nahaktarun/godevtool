@@ -31,6 +31,7 @@ import (
 
 // DataProviders bridges subsystems to the dashboard.
 type DataProviders struct {
+	Version    string
 	Logger     *log.Logger
 	Middleware *middleware.Inspector
 	Goroutine  func() goroutine.Snapshot
@@ -389,6 +390,7 @@ func (s *Server) handleHotReload(w http.ResponseWriter, r *http.Request) {
 }
 
 type overviewData struct {
+	Version        string `json:"version"`
 	LogCount       int    `json:"log_count"`
 	RequestCount   int    `json:"request_count"`
 	GoroutineCount int    `json:"goroutine_count"`
@@ -409,7 +411,7 @@ type overviewData struct {
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	setCORS(w)
-	data := overviewData{}
+	data := overviewData{Version: s.providers.Version}
 
 	if s.providers.Logger != nil {
 		data.LogCount = len(s.providers.Logger.History())
