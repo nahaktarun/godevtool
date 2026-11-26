@@ -7,6 +7,7 @@ import (
 
 func TestCaptureJSON(t *testing.T) {
 	e := New(DataSource{
+		Version: "v1.2.3",
 		AppName: "test-app",
 		Logs:    func() any { return []string{"log1", "log2"} },
 		Timers:  func() any { return map[string]int{"op1": 100} },
@@ -18,6 +19,9 @@ func TestCaptureJSON(t *testing.T) {
 	}
 
 	s := string(data)
+	if !strings.Contains(s, `"version": "v1.2.3"`) {
+		t.Error("expected version in JSON")
+	}
 	if !strings.Contains(s, "test-app") {
 		t.Error("expected app_name in JSON")
 	}
@@ -31,6 +35,7 @@ func TestCaptureJSON(t *testing.T) {
 
 func TestCaptureHTML(t *testing.T) {
 	e := New(DataSource{
+		Version: "v1.2.3",
 		AppName: "test-app",
 		Logs:    func() any { return []string{"hello"} },
 	})
@@ -43,6 +48,9 @@ func TestCaptureHTML(t *testing.T) {
 	s := string(data)
 	if !strings.Contains(s, "<!DOCTYPE html>") {
 		t.Error("expected HTML doctype")
+	}
+	if !strings.Contains(s, "Version v1.2.3") {
+		t.Error("expected version in HTML")
 	}
 	if !strings.Contains(s, "test-app") {
 		t.Error("expected app name in HTML")
